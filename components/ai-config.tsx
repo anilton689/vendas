@@ -38,7 +38,7 @@ interface AIConfig {
 export function AIConfig() {
   const [config, setConfig] = useState<AIConfig>({
     apiKey:
-      "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",
+      "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",
     model: "gpt-4o-mini",
     temperature: 0.7,
     maxTokens: 1000,
