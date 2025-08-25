@@ -35,7 +35,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
     "https://script.google.com/macros/s/AKfycbxGZKIBspUIbfhZaanLSTkc1VGuowbpu0b8cd6HUphvZpwwQ1d_n7Uq0kiBrxCXFMnIng/exec"
 
   const OPENAI_API_KEY =
-    "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"
+    "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"
 
   useEffect(() => {
     // Configurar automaticamente as APIs na inicialização
