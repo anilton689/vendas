@@ -35,7 +35,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
     "https://script.google.com/macros/s/AKfycbxGZKIBspUIbfhZaanLSTkc1VGuowbpu0b8cd6HUphvZpwwQ1d_n7Uq0kiBrxCXFMnIng/exec"
 
   const OPENAI_API_KEY =
-    "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"
+    "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"
 
   useEffect(() => {
     // Configurar automaticamente as APIs na inicialização
@@ -174,7 +174,7 @@ Seja sempre prático, direto e focado em resultados.`,
               <h4 className="font-medium text-purple-900 mb-3">🤖 IA ChatGPT</h4>
               <div className="text-sm text-purple-800 space-y-2">
                 <p>
-                  <strong>API Key:</strong> sk-proj...qbUA ✅
+                  <strong>API Key:</strong> sk-proj...lGkA ✅
                 </p>
                 <p>
                   <strong>Modelo:</strong> GPT-4o Mini
