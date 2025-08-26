@@ -186,7 +186,7 @@ DADOS DO ORÇAMENTO:
 ${budget.historico?.length ? `Último follow-up: ${budget.historico[budget.historico.length - 1]?.observacoes}` : ""}
 `
 
-      const fullMessage = `${currentConfig.followupPrompt}
+      const fullMessage = `${currentConfig.followupPrompt || "Analise este orçamento e forneça sugestões para follow-up."}
 
 ${budgetContext}
 
@@ -202,30 +202,42 @@ Forneça 4 sugestões específicas para o follow-up no formato JSON:
   ]
 }`
 
-      console.log("📤 [FollowupForm] Enviando para sugestões da IA...")
+      console.log("📤 [FollowupForm] Enviando para sugestões da IA:", {
+        messageLength: fullMessage.length,
+        hasConfig: !!currentConfig,
+        systemPromptLength: currentConfig.systemPrompt?.length || 0,
+      })
+
+      const requestBody = {
+        message: fullMessage, // Garantir que é string válida
+        budget: {
+          sequencia_orcamento: budget.sequencia,
+          nome_cliente: budget.cliente,
+          valor_orcamento: budget.valor,
+          status: budget.status_atual,
+          dias_desde_criacao: calculateDaysOpen(budget.data),
+          observacoes: budget.observacoes_atuais || "Nenhuma",
+        },
+        config: {
+          model: currentConfig.model || "gpt-4o-mini",
+          temperature: currentConfig.temperature || 0.7,
+          maxTokens: currentConfig.maxTokens || 1000,
+          systemPrompt: currentConfig.systemPrompt || "Você é um assistente especializado em vendas.",
+        },
+      }
+
+      console.log("📦 [FollowupForm] Dados das sugestões sendo enviados:", {
+        hasMessage: !!requestBody.message,
+        messageLength: requestBody.message?.length || 0,
+        hasSystemPrompt: !!requestBody.config.systemPrompt,
+      })
 
       const response = await fetch("/api/ai-chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          message: fullMessage,
-          budget: {
-            sequencia_orcamento: budget.sequencia,
-            nome_cliente: budget.cliente,
-            valor_orcamento: budget.valor,
-            status: budget.status_atual,
-            dias_desde_criacao: calculateDaysOpen(budget.data),
-            observacoes: budget.observacoes_atuais || "Nenhuma",
-          },
-          config: {
-            model: currentConfig.model,
-            temperature: currentConfig.temperature,
-            maxTokens: currentConfig.maxTokens,
-            systemPrompt: currentConfig.systemPrompt,
-          },
-        }),
+        body: JSON.stringify(requestBody),
       })
 
       if (!response.ok) {
@@ -302,33 +314,47 @@ Forneça 4 sugestões específicas para o follow-up no formato JSON:
     try {
       console.log("🤖 [FollowupForm] Enviando mensagem para IA:", {
         message: messageToSend,
+        messageLength: messageToSend.length,
         hasBudget: !!budget,
         hasSystemPrompt: !!aiConfig.systemPrompt,
+        systemPromptLength: aiConfig.systemPrompt?.length || 0,
         model: aiConfig.model,
+      })
+
+      const requestBody = {
+        message: messageToSend, // Garantir que é string válida
+        budget: budget
+          ? {
+              sequencia_orcamento: budget.sequencia,
+              nome_cliente: budget.cliente,
+              nome_vendedor: user.nome,
+              valor_orcamento: budget.valor,
+              data_orcamento: budget.data,
+              status: budget.status_atual,
+              dias_desde_criacao: calculateDaysOpen(budget.data),
+              observacoes: budget.observacoes_atuais || "Nenhuma",
+            }
+          : null,
+        config: {
+          model: aiConfig.model || "gpt-4o-mini",
+          temperature: aiConfig.temperature || 0.7,
+          maxTokens: aiConfig.maxTokens || 1000,
+          systemPrompt: aiConfig.systemPrompt || "Você é um assistente especializado em vendas.",
+        },
+      }
+
+      console.log("📦 [FollowupForm] Dados sendo enviados:", {
+        hasMessage: !!requestBody.message,
+        messageLength: requestBody.message?.length || 0,
+        hasConfig: !!requestBody.config,
+        hasSystemPrompt: !!requestBody.config.systemPrompt,
+        systemPromptLength: requestBody.config.systemPrompt?.length || 0,
       })
 
       const response = await fetch("/api/ai-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: messageToSend,
-          budget: {
-            sequencia_orcamento: budget.sequencia,
-            nome_cliente: budget.cliente,
-            nome_vendedor: user.nome,
-            valor_orcamento: budget.valor,
-            data_orcamento: budget.data,
-            status: budget.status_atual,
-            dias_desde_criacao: calculateDaysOpen(budget.data),
-            observacoes: budget.observacoes_atuais || "Nenhuma",
-          },
-          config: {
-            model: aiConfig.model,
-            temperature: aiConfig.temperature,
-            maxTokens: aiConfig.maxTokens,
-            systemPrompt: aiConfig.systemPrompt,
-          },
-        }),
+        body: JSON.stringify(requestBody),
       })
 
       console.log("📡 [FollowupForm] Status da resposta:", response.status)
