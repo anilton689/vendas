@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 
 export async function POST(request: NextRequest) {
   try {
-    const { message, budget, config } = await request.json()
+    const { prompt, message, budget, config } = await request.json()
 
     // Verificar se a API Key está configurada no Vercel
     const apiKey = process.env.OPENAI_API_KEY
@@ -11,9 +11,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "API Key da OpenAI não configurada no servidor" }, { status: 500 })
     }
 
+    // Usar prompt ou message como fallback
+    const userMessage = prompt || message
+    if (!userMessage || typeof userMessage !== "string" || userMessage.trim().length === 0) {
+      console.error("❌ [AI-API] Mensagem inválida:", { prompt, message, type: typeof userMessage })
+      return NextResponse.json({ error: "Mensagem é obrigatória e deve ser uma string válida" }, { status: 400 })
+    }
+
     console.log("🤖 [AI-API] Processando requisição:", {
-      hasMessage: !!message,
-      messageLength: message?.length || 0,
+      hasMessage: !!userMessage,
+      messageLength: userMessage?.length || 0,
       hasBudget: !!budget,
       hasConfig: !!config,
       model: config?.model || "não especificado",
@@ -21,14 +28,8 @@ export async function POST(request: NextRequest) {
       systemPromptValue: config?.systemPrompt ? "presente" : "ausente",
     })
 
-    // Validar se a mensagem não está vazia
-    if (!message || typeof message !== "string" || message.trim().length === 0) {
-      console.error("❌ [AI-API] Mensagem inválida:", { message, type: typeof message })
-      return NextResponse.json({ error: "Mensagem é obrigatória e deve ser uma string válida" }, { status: 400 })
-    }
-
     // Preparar contexto baseado no orçamento (se fornecido)
-    let contextualMessage = message.trim()
+    let contextualMessage = userMessage.trim()
     if (budget) {
       const budgetContext = `
 DADOS DO ORÇAMENTO PARA ANÁLISE:
@@ -41,7 +42,7 @@ DADOS DO ORÇAMENTO PARA ANÁLISE:
 - Dias desde criação: ${budget.dias_desde_criacao || "N/A"}
 - Observações: ${budget.observacoes || "Nenhuma"}
 
-PERGUNTA DO USUÁRIO: ${message.trim()}
+PERGUNTA DO USUÁRIO: ${userMessage.trim()}
 `
       contextualMessage = budgetContext
     }
@@ -72,7 +73,7 @@ PERGUNTA DO USUÁRIO: ${message.trim()}
     // Validar que a mensagem contextual não é null/undefined
     if (!contextualMessage || typeof contextualMessage !== "string") {
       console.error("❌ [AI-API] Mensagem contextual inválida:", { contextualMessage, type: typeof contextualMessage })
-      contextualMessage = message.trim() || "Como posso ajudar?"
+      contextualMessage = userMessage.trim() || "Como posso ajudar?"
     }
 
     console.log("📝 [AI-API] Dados finais para OpenAI:", {

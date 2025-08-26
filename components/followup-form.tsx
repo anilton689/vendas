@@ -209,7 +209,7 @@ Forneça 4 sugestões específicas para o follow-up no formato JSON:
       })
 
       const requestBody = {
-        message: fullMessage, // Garantir que é string válida
+        prompt: fullMessage, // Mudou de 'message' para 'prompt'
         budget: {
           sequencia_orcamento: budget.sequencia,
           nome_cliente: budget.cliente,
@@ -227,8 +227,8 @@ Forneça 4 sugestões específicas para o follow-up no formato JSON:
       }
 
       console.log("📦 [FollowupForm] Dados das sugestões sendo enviados:", {
-        hasMessage: !!requestBody.message,
-        messageLength: requestBody.message?.length || 0,
+        hasMessage: !!requestBody.prompt,
+        messageLength: requestBody.prompt?.length || 0,
         hasSystemPrompt: !!requestBody.config.systemPrompt,
       })
 
@@ -322,7 +322,7 @@ Forneça 4 sugestões específicas para o follow-up no formato JSON:
       })
 
       const requestBody = {
-        message: messageToSend, // Garantir que é string válida
+        prompt: messageToSend, // Mudou de 'message' para 'prompt'
         budget: budget
           ? {
               sequencia_orcamento: budget.sequencia,
@@ -344,8 +344,8 @@ Forneça 4 sugestões específicas para o follow-up no formato JSON:
       }
 
       console.log("📦 [FollowupForm] Dados sendo enviados:", {
-        hasMessage: !!requestBody.message,
-        messageLength: requestBody.message?.length || 0,
+        hasMessage: !!requestBody.prompt,
+        messageLength: requestBody.prompt?.length || 0,
         hasConfig: !!requestBody.config,
         hasSystemPrompt: !!requestBody.config.systemPrompt,
         systemPromptLength: requestBody.config.systemPrompt?.length || 0,
