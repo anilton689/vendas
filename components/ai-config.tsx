@@ -1,276 +1,366 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Slider } from "@/components/ui/slider"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
-import { AlertCircle, CheckCircle, RefreshCw, Database, Shield, Zap } from "lucide-react"
-import { useAIConfig } from "@/hooks/useAIConfig"
+import {
+  Settings,
+  Brain,
+  TestTube,
+  CheckCircle,
+  AlertTriangle,
+  Loader2,
+  Shield,
+  Zap,
+  MessageSquare,
+} from "lucide-react"
 
-export function AIConfig() {
-  const { config, updateConfig, testConnection, isLoading, refreshConfig } = useAIConfig()
+interface AIConfigProps {
+  onConfigSaved?: () => void
+}
+
+export function AIConfig({ onConfigSaved }: AIConfigProps) {
+  const [config, setConfig] = useState({
+    model: "gpt-4o-mini",
+    temperature: 0.7,
+    maxTokens: 1000,
+    systemPrompt:
+      "Você é um assistente especializado em vendas e follow-up de orçamentos. Forneça respostas práticas e específicas para ajudar vendedores a fechar mais negócios.",
+    followupPrompt: `Analise este orçamento e forneça sugestões específicas para o próximo follow-up em formato de lista clara:
+
+• **Próxima Ação:** [Qual a melhor abordagem para este cliente?]
+• **Timing:** [Quando fazer o próximo contato?]
+• **Argumentos:** [Que argumentos usar?]
+• **Objeções:** [Como superar possíveis objeções?]
+• **Estratégia:** [Estratégia específica para este caso]
+
+Use SEMPRE este formato de lista com bullets (•) e negrito (**) nos títulos.
+Seja direto e prático. Máximo 5 pontos.`,
+    analysisPrompt: `Analise este orçamento e forneça uma análise estruturada em formato JSON:
+
+{
+  "probabilidade": [número de 0 a 100],
+  "categoria_risco": "[baixo/médio/alto]",
+  "motivos_principais": ["motivo1", "motivo2", "motivo3"],
+  "estrategias_recomendadas": ["estrategia1", "estrategia2", "estrategia3"],
+  "proximos_passos": ["passo1", "passo2", "passo3"],
+  "prazo_sugerido": "[em dias para próximo contato]",
+  "observacoes_importantes": "observação relevante"
+}
+
+Base sua análise nos dados fornecidos: valor, tempo em aberto, histórico de interações e status atual.`,
+    isConfigured: false,
+  })
+
+  const [isSaving, setIsSaving] = useState(false)
+  const [isTesting, setIsTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
-  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [saveMessage, setSaveMessage] = useState("")
 
-  const handleTestConnection = async () => {
-    const result = await testConnection()
-    setTestResult(result)
-    setTimeout(() => setTestResult(null), 3000)
+  useEffect(() => {
+    loadConfig()
+  }, [])
+
+  const loadConfig = () => {
+    try {
+      const savedConfig = localStorage.getItem("ai-config")
+      if (savedConfig) {
+        const parsed = JSON.parse(savedConfig)
+        setConfig((prev) => ({ ...prev, ...parsed }))
+        console.log("🔧 Configuração da IA carregada:", parsed)
+      }
+    } catch (error) {
+      console.error("❌ Erro ao carregar configuração:", error)
+    }
   }
 
-  const handleRefreshConfig = async () => {
-    setIsRefreshing(true)
-    await refreshConfig()
-    setIsRefreshing(false)
-    setTestResult({ success: true, message: "✅ Configuração atualizada da planilha!" })
-    setTimeout(() => setTestResult(null), 2000)
+  const saveConfig = async () => {
+    setIsSaving(true)
+    setSaveMessage("")
+
+    try {
+      const configToSave = { ...config, isConfigured: true }
+      localStorage.setItem("ai-config", JSON.stringify(configToSave))
+      setConfig(configToSave)
+      setSaveMessage("✅ Configuração salva com sucesso!")
+
+      if (onConfigSaved) {
+        onConfigSaved()
+      }
+
+      console.log("💾 Configuração da IA salva:", configToSave)
+
+      setTimeout(() => setSaveMessage(""), 3000)
+    } catch (error) {
+      console.error("❌ Erro ao salvar configuração:", error)
+      setSaveMessage("❌ Erro ao salvar configuração")
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const testConnection = async () => {
+    setIsTesting(true)
+    setTestResult(null)
+
+    try {
+      console.log("🧪 Testando conexão com a IA...")
+
+      const response = await fetch("/api/ai-chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messages: [
+            {
+              role: "system",
+              content: config.systemPrompt,
+            },
+            {
+              role: "user",
+              content: "Teste de conexão. Responda apenas: 'Conexão estabelecida com sucesso!'",
+            },
+          ],
+          model: config.model,
+          temperature: config.temperature,
+          maxTokens: 100,
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log("✅ Teste de conexão bem-sucedido:", data)
+        setTestResult({
+          success: true,
+          message: `Conexão estabelecida! Modelo: ${config.model}`,
+        })
+      } else {
+        const errorData = await response.json()
+        console.error("❌ Erro no teste:", response.status, errorData)
+        setTestResult({
+          success: false,
+          message: `Erro ${response.status}: ${errorData.error || "Erro desconhecido"}`,
+        })
+      }
+    } catch (error: any) {
+      console.error("❌ Erro no teste de conexão:", error)
+      setTestResult({
+        success: false,
+        message: `Erro de conexão: ${error.message}`,
+      })
+    } finally {
+      setIsTesting(false)
+    }
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">Configuração da IA</h2>
-          <p className="text-muted-foreground">Configure o comportamento da inteligência artificial</p>
-        </div>
-        <div className="flex gap-2">
-          <Badge variant="secondary" className="flex items-center gap-1">
-            <Database className="h-3 w-3" />
-            Config na Planilha
-          </Badge>
-          <Badge variant="outline" className="flex items-center gap-1">
-            <Shield className="h-3 w-3" />
-            IA Segura
-          </Badge>
-        </div>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Brain className="h-5 w-5" />
+            Configuração da IA
+            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+              <Shield className="h-3 w-3 mr-1" />
+              API Segura
+            </Badge>
+          </CardTitle>
+          <CardDescription>Configure a inteligência artificial para análises e sugestões de follow-up</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Tabs defaultValue="basic" className="space-y-4">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="basic">⚙️ Básico</TabsTrigger>
+              <TabsTrigger value="prompts">📝 Prompts</TabsTrigger>
+              <TabsTrigger value="test">🧪 Teste</TabsTrigger>
+            </TabsList>
 
-      <Tabs defaultValue="model" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="model">Modelo</TabsTrigger>
-          <TabsTrigger value="prompts">Prompts</TabsTrigger>
-          <TabsTrigger value="test">Teste</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="model" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Zap className="h-5 w-5" />
-                Configurações do Modelo
-              </CardTitle>
-              <CardDescription>Configure o modelo de IA e parâmetros de geração</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+            <TabsContent value="basic" className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="model">Modelo</Label>
-                  <Input
-                    id="model"
+                  <Label htmlFor="model">Modelo da IA</Label>
+                  <Select
                     value={config.model}
-                    onChange={(e) => updateConfig({ ...config, model: e.target.value })}
-                    placeholder="gpt-4o-mini"
-                  />
+                    onValueChange={(value) => setConfig((prev) => ({ ...prev, model: value }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="gpt-4o-mini">GPT-4o Mini (Recomendado)</SelectItem>
+                      <SelectItem value="gpt-4o">GPT-4o (Mais Avançado)</SelectItem>
+                      <SelectItem value="gpt-3.5-turbo">GPT-3.5 Turbo (Econômico)</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="maxTokens">Máximo de Tokens</Label>
-                  <Input
-                    id="maxTokens"
-                    type="number"
-                    value={config.maxTokens}
-                    onChange={(e) => updateConfig({ ...config, maxTokens: Number.parseInt(e.target.value) || 1000 })}
-                    placeholder="1000"
-                  />
+                  <Select
+                    value={config.maxTokens.toString()}
+                    onValueChange={(value) => setConfig((prev) => ({ ...prev, maxTokens: Number.parseInt(value) }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="500">500 (Respostas Curtas)</SelectItem>
+                      <SelectItem value="1000">1000 (Recomendado)</SelectItem>
+                      <SelectItem value="2000">2000 (Respostas Longas)</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="temperature">Temperatura: {config.temperature}</Label>
+                <Label htmlFor="temperature">Criatividade: {config.temperature}</Label>
                 <Slider
-                  id="temperature"
-                  min={0}
-                  max={2}
-                  step={0.1}
                   value={[config.temperature]}
-                  onValueChange={(value) => updateConfig({ ...config, temperature: value[0] })}
+                  onValueChange={(value) => setConfig((prev) => ({ ...prev, temperature: value[0] }))}
+                  max={1}
+                  min={0}
+                  step={0.1}
                   className="w-full"
                 />
-                <div className="flex justify-between text-xs text-muted-foreground">
+                <div className="flex justify-between text-xs text-gray-500">
                   <span>Mais Preciso</span>
                   <span>Mais Criativo</span>
                 </div>
               </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+            </TabsContent>
 
-        <TabsContent value="prompts" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Database className="h-5 w-5" />
-                Prompts Personalizados
-              </CardTitle>
-              <CardDescription>
-                Prompts são carregados da planilha (aba ConfigIA). Para alterar, edite diretamente na planilha.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex justify-between items-center">
-                <Badge variant="outline" className="flex items-center gap-1">
-                  <Database className="h-3 w-3" />
-                  Centralizado na Planilha
-                </Badge>
-                <Button
-                  onClick={handleRefreshConfig}
-                  disabled={isRefreshing}
-                  variant="outline"
-                  size="sm"
-                  className="flex items-center gap-2 bg-transparent"
-                >
-                  <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
-                  {isRefreshing ? "Atualizando..." : "Atualizar da Planilha"}
-                </Button>
-              </div>
-
-              <Separator />
-
+            <TabsContent value="prompts" className="space-y-4">
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="systemPrompt">Prompt do Sistema</Label>
                   <Textarea
                     id="systemPrompt"
                     value={config.systemPrompt}
-                    readOnly
-                    className="min-h-[120px] bg-muted/50"
-                    placeholder="Carregando da planilha..."
+                    onChange={(e) => setConfig((prev) => ({ ...prev, systemPrompt: e.target.value }))}
+                    rows={3}
+                    placeholder="Defina como a IA deve se comportar..."
                   />
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>Somente leitura - edite na planilha</span>
-                    <span>{config.systemPrompt.length} caracteres</span>
-                  </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="followupPrompt">Prompt para Follow-ups</Label>
+                  <Label htmlFor="followupPrompt">Prompt para Sugestões de Follow-up</Label>
                   <Textarea
                     id="followupPrompt"
                     value={config.followupPrompt}
-                    readOnly
-                    className="min-h-[120px] bg-muted/50"
-                    placeholder="Carregando da planilha..."
+                    onChange={(e) => setConfig((prev) => ({ ...prev, followupPrompt: e.target.value }))}
+                    rows={8}
+                    placeholder="Como a IA deve gerar sugestões de follow-up..."
                   />
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>Somente leitura - edite na planilha</span>
-                    <span>{config.followupPrompt.length} caracteres</span>
-                  </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="analysisPrompt">Prompt para Análises</Label>
+                  <Label htmlFor="analysisPrompt">Prompt para Análise Estruturada</Label>
                   <Textarea
                     id="analysisPrompt"
                     value={config.analysisPrompt}
-                    readOnly
-                    className="min-h-[120px] bg-muted/50"
-                    placeholder="Carregando da planilha..."
+                    onChange={(e) => setConfig((prev) => ({ ...prev, analysisPrompt: e.target.value }))}
+                    rows={10}
+                    placeholder="Como a IA deve fazer análises estruturadas..."
                   />
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>Somente leitura - edite na planilha</span>
-                    <span>{config.analysisPrompt.length} caracteres</span>
-                  </div>
                 </div>
               </div>
+            </TabsContent>
 
-              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                <div className="flex items-start gap-2">
-                  <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5" />
-                  <div className="text-sm">
-                    <p className="font-medium text-blue-900">Como personalizar os prompts:</p>
-                    <ol className="mt-2 space-y-1 text-blue-800 list-decimal list-inside">
-                      <li>Abra sua planilha do Google Sheets</li>
-                      <li>Vá para a aba "ConfigIA"</li>
-                      <li>Edite os valores na coluna B (systemPrompt, followupPrompt, analysisPrompt)</li>
-                      <li>Volte aqui e clique em "Atualizar da Planilha"</li>
-                    </ol>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+            <TabsContent value="test" className="space-y-4">
+              <div className="space-y-4">
+                <Alert>
+                  <Shield className="h-4 w-4" />
+                  <AlertDescription>
+                    <strong>Segurança:</strong> A API Key está configurada no servidor Vercel e não é exposta no
+                    frontend.
+                  </AlertDescription>
+                </Alert>
 
-        <TabsContent value="test" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CheckCircle className="h-5 w-5" />
-                Teste de Conexão
-              </CardTitle>
-              <CardDescription>Verifique se a IA está funcionando corretamente</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex gap-2">
-                <Button onClick={handleTestConnection} disabled={isLoading} className="flex items-center gap-2">
-                  {isLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
-                  {isLoading ? "Testando..." : "Testar Conexão"}
-                </Button>
-              </div>
-
-              {testResult && (
-                <div
-                  className={`p-4 rounded-lg border ${
-                    testResult.success
-                      ? "bg-green-50 border-green-200 text-green-800"
-                      : "bg-red-50 border-red-200 text-red-800"
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    {testResult.success ? (
-                      <CheckCircle className="h-5 w-5 text-green-600" />
+                <div className="flex items-center gap-4">
+                  <Button onClick={testConnection} disabled={isTesting} className="flex items-center gap-2">
+                    {isTesting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Testando...
+                      </>
                     ) : (
-                      <AlertCircle className="h-5 w-5 text-red-600" />
+                      <>
+                        <TestTube className="h-4 w-4" />
+                        Testar Conexão
+                      </>
                     )}
-                    <span className="font-medium">{testResult.message}</span>
-                  </div>
-                </div>
-              )}
+                  </Button>
 
-              <div className="bg-gray-50 p-4 rounded-lg border">
-                <h4 className="font-medium mb-2">Status da Configuração:</h4>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span>Modelo:</span>
-                    <Badge variant="outline">{config.model}</Badge>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Temperatura:</span>
-                    <Badge variant="outline">{config.temperature}</Badge>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Max Tokens:</span>
-                    <Badge variant="outline">{config.maxTokens}</Badge>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>API Key:</span>
-                    <Badge variant="secondary">Configurada no Servidor</Badge>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Prompts:</span>
-                    <Badge variant="secondary">Carregados da Planilha</Badge>
+                  {testResult && (
+                    <Alert className={testResult.success ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"}>
+                      {testResult.success ? (
+                        <CheckCircle className="h-4 w-4 text-green-600" />
+                      ) : (
+                        <AlertTriangle className="h-4 w-4 text-red-600" />
+                      )}
+                      <AlertDescription className={testResult.success ? "text-green-700" : "text-red-700"}>
+                        {testResult.message}
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </div>
+
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <h4 className="font-medium mb-2">Status da Configuração:</h4>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      {config.isConfigured ? (
+                        <CheckCircle className="h-4 w-4 text-green-500" />
+                      ) : (
+                        <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                      )}
+                      <span>Configuração: {config.isConfigured ? "Ativa" : "Pendente"}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Zap className="h-4 w-4 text-blue-500" />
+                      <span>Modelo: {config.model}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <MessageSquare className="h-4 w-4 text-purple-500" />
+                      <span>Tokens: {config.maxTokens}</span>
+                    </div>
                   </div>
                 </div>
               </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+            </TabsContent>
+          </Tabs>
+
+          <div className="flex justify-end gap-2 mt-6">
+            <Button onClick={saveConfig} disabled={isSaving}>
+              {isSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Salvando...
+                </>
+              ) : (
+                <>
+                  <Settings className="h-4 w-4 mr-2" />
+                  Salvar Configuração
+                </>
+              )}
+            </Button>
+          </div>
+
+          {saveMessage && (
+            <Alert className="mt-4">
+              <AlertDescription>{saveMessage}</AlertDescription>
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }
