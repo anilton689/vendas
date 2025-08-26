@@ -17,7 +17,6 @@ import {
   Plus,
   MessageSquare,
   MessageCircle,
-  Brain,
   Copy,
   Send,
   Lightbulb,
@@ -64,6 +63,7 @@ export function FollowupForm({ budget, isOpen, onClose, onSuccess, user }: Follo
   const [isAILoading, setIsAILoading] = useState(false)
   const [aiSuggestions, setAISuggestions] = useState<AISuggestion[]>([])
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false)
+  const [aiConfig, setAiConfig] = useState<any>(null)
 
   useEffect(() => {
     if (isOpen && budget) {
@@ -74,61 +74,117 @@ export function FollowupForm({ budget, isOpen, onClose, onSuccess, user }: Follo
       setCurrentMessage("")
       setAISuggestions([])
 
-      // Carregar sugestões da IA
-      const config = getAIConfig()
-      if (config.apiKey) {
-        loadAISuggestions()
-      }
+      // Carregar configuração da IA da planilha
+      loadAIConfigFromSheet()
     }
   }, [isOpen, budget])
 
-  const getAIConfig = () => {
+  const loadAIConfigFromSheet = async () => {
     try {
-      const configStr = localStorage.getItem("ai-config")
-      if (configStr) {
-        const config = JSON.parse(configStr)
-        console.log("🤖 Configuração da IA encontrada:", {
-          hasApiKey: !!config.apiKey,
-          model: config.model,
-          temperature: config.temperature,
-        })
-        return config
+      console.log("🔄 [FollowupForm] Carregando configuração da IA da planilha...")
+
+      const adminConfig = localStorage.getItem("admin-sheets-config")
+      if (!adminConfig) {
+        console.log("⚠️ [FollowupForm] Configuração da planilha não encontrada")
+        return
+      }
+
+      const { apiKey, spreadsheetId } = JSON.parse(adminConfig)
+      if (!apiKey || !spreadsheetId) {
+        console.log("⚠️ [FollowupForm] API Key ou Spreadsheet ID não configurados")
+        return
+      }
+
+      // Buscar dados da aba ConfigIA
+      const range = "ConfigIA!A:B"
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?key=${apiKey}`
+
+      const response = await fetch(url)
+      if (!response.ok) {
+        console.error("❌ [FollowupForm] Erro ao buscar ConfigIA:", response.status)
+        return
+      }
+
+      const data = await response.json()
+      if (!data.values || data.values.length === 0) {
+        console.warn("⚠️ [FollowupForm] Aba ConfigIA não encontrada ou vazia")
+        return
+      }
+
+      // Processar dados da planilha
+      const configData: Record<string, string> = {}
+      for (let i = 1; i < data.values.length; i++) {
+        const row = data.values[i]
+        if (row && row.length >= 2) {
+          const tipo = String(row[0] || "").trim()
+          const valor = String(row[1] || "").trim()
+          if (tipo && valor) {
+            configData[tipo] = valor
+          }
+        }
+      }
+
+      const config = {
+        model: configData.model || "gpt-4o-mini",
+        temperature: Number.parseFloat(configData.temperature) || 0.7,
+        maxTokens: Number.parseInt(configData.maxTokens) || 1000,
+        systemPrompt: configData.systemPrompt || "Você é um assistente especializado em vendas.",
+        followupPrompt: configData.followupPrompt || "Analise este orçamento e forneça sugestões para follow-up.",
+        analysisPrompt: configData.analysisPrompt || "Analise este orçamento e forneça insights.",
+      }
+
+      setAiConfig(config)
+      console.log("✅ [FollowupForm] Configuração da IA carregada:", {
+        model: config.model,
+        systemPromptLength: config.systemPrompt.length,
+        followupPromptLength: config.followupPrompt.length,
+      })
+
+      // Carregar sugestões automaticamente
+      if (config.followupPrompt) {
+        loadAISuggestions(config)
       }
     } catch (error) {
-      console.error("❌ Erro ao carregar configuração da IA:", error)
+      console.error("❌ [FollowupForm] Erro ao carregar configuração da IA:", error)
     }
-    return {}
   }
 
-  const loadAISuggestions = async () => {
+  const loadAISuggestions = async (config?: any) => {
     if (!budget) return
 
-    const config = getAIConfig()
-    if (!config.apiKey) {
-      console.log("⚠️ API Key não configurada para sugestões")
+    const currentConfig = config || aiConfig
+    if (!currentConfig) {
+      console.log("⚠️ [FollowupForm] Configuração da IA não carregada")
       return
     }
 
     setIsLoadingSuggestions(true)
     try {
       const budgetContext = `
-Orçamento: ${budget.sequencia}
-Cliente: ${budget.cliente}
-Valor: R$ ${budget.valor.toLocaleString("pt-BR")}
-Status Atual: ${budget.status_atual}
-Dias em Aberto: ${calculateDaysOpen(budget.data)}
-Observações: ${budget.observacoes_atuais || "Nenhuma"}
-Histórico: ${budget.historico?.length || 0} interações anteriores
+DADOS DO ORÇAMENTO:
+- Sequência: ${budget.sequencia}
+- Cliente: ${budget.cliente}
+- Valor: R$ ${budget.valor.toLocaleString("pt-BR")}
+- Status Atual: ${budget.status_atual}
+- Dias em Aberto: ${calculateDaysOpen(budget.data)}
+- Observações: ${budget.observacoes_atuais || "Nenhuma"}
+- Histórico: ${budget.historico?.length || 0} interações anteriores
 ${budget.historico?.length ? `Último follow-up: ${budget.historico[budget.historico.length - 1]?.observacoes}` : ""}
 `
 
-      const prompt = `${config.salesPrompt || "Você é um especialista em vendas B2B."}
+      console.log("📤 [FollowupForm] Enviando para sugestões da IA...")
 
-Analise este orçamento e forneça 4 sugestões específicas para o follow-up:
+      const response = await fetch("/api/ai-chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: `${currentConfig.followupPrompt}
 
 ${budgetContext}
 
-Forneça as sugestões no formato JSON:
+Forneça 4 sugestões específicas para o follow-up no formato JSON:
 {
   "sugestoes": [
     {
@@ -138,23 +194,9 @@ Forneça as sugestões no formato JSON:
       "prioridade": "alta|media|baixa"
     }
   ]
-}
-
-Seja específico, prático e considere o contexto brasileiro de vendas.`
-
-      console.log("📤 Enviando prompt para sugestões da IA...")
-
-      const response = await fetch("/api/ai-chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          messages: [{ role: "system", content: prompt }],
-          apiKey: config.apiKey,
-          model: config.model || "gpt-4o-mini",
-          temperature: config.temperature || 0.7,
-          maxTokens: config.maxTokens || 1000,
+}`,
+          budget: null,
+          config: currentConfig,
         }),
       })
 
@@ -163,20 +205,20 @@ Seja específico, prático e considere o contexto brasileiro de vendas.`
       }
 
       const data = await response.json()
-      console.log("📥 Resposta da IA para sugestões:", data)
+      console.log("📥 [FollowupForm] Resposta da IA para sugestões:", data)
 
       // Tentar extrair JSON da resposta
       try {
-        const jsonMatch = data.content.match(/\{[\s\S]*\}/)
+        const jsonMatch = data.response.match(/\{[\s\S]*\}/)
         if (jsonMatch) {
           const parsed = JSON.parse(jsonMatch[0])
           if (parsed.sugestoes && Array.isArray(parsed.sugestoes)) {
             setAISuggestions(parsed.sugestoes)
-            console.log("✅ Sugestões carregadas:", parsed.sugestoes.length)
+            console.log("✅ [FollowupForm] Sugestões carregadas:", parsed.sugestoes.length)
           }
         }
       } catch (parseError) {
-        console.warn("⚠️ Erro ao parsear sugestões da IA:", parseError)
+        console.warn("⚠️ [FollowupForm] Erro ao parsear sugestões da IA:", parseError)
         // Sugestões padrão como fallback
         setAISuggestions([
           {
@@ -196,7 +238,7 @@ Seja específico, prático e considere o contexto brasileiro de vendas.`
         ])
       }
     } catch (error) {
-      console.error("❌ Erro ao carregar sugestões da IA:", error)
+      console.error("❌ [FollowupForm] Erro ao carregar sugestões da IA:", error)
     } finally {
       setIsLoadingSuggestions(false)
     }
@@ -205,9 +247,8 @@ Seja específico, prático e considere o contexto brasileiro de vendas.`
   const sendChatMessage = async () => {
     if (!currentMessage.trim()) return
 
-    const config = getAIConfig()
-    if (!config.apiKey) {
-      alert("❌ API Key da IA não configurada. Configure em Sistema → Configurar IA")
+    if (!aiConfig) {
+      alert("❌ Configuração da IA não carregada. Aguarde um momento e tente novamente.")
       return
     }
 
@@ -224,22 +265,18 @@ Seja específico, prático e considere o contexto brasileiro de vendas.`
 
     try {
       const budgetContext = `
-Contexto do Orçamento:
+CONTEXTO DO ORÇAMENTO:
 - Cliente: ${budget.cliente}
 - Valor: R$ ${budget.valor.toLocaleString("pt-BR")}
 - Status: ${budget.status_atual}
 - Dias em aberto: ${calculateDaysOpen(budget.data)}
 - Observações: ${budget.observacoes_atuais || "Nenhuma"}
 - Histórico: ${budget.historico?.length || 0} interações
+
+PERGUNTA: ${currentMessage.trim()}
 `
 
-      const systemPrompt = `${config.salesPrompt || "Você é um assistente de vendas especializado."}
-
-${budgetContext}
-
-Responda de forma prática e específica para este orçamento. Use linguagem profissional mas amigável.`
-
-      console.log("📤 Enviando mensagem para chat da IA...")
+      console.log("📤 [FollowupForm] Enviando mensagem para chat da IA...")
 
       const response = await fetch("/api/ai-chat", {
         method: "POST",
@@ -247,15 +284,9 @@ Responda de forma prática e específica para este orçamento. Use linguagem pro
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          messages: [
-            { role: "system", content: systemPrompt },
-            ...chatMessages.slice(-5).map((m) => ({ role: m.role, content: m.content })),
-            { role: "user", content: currentMessage.trim() },
-          ],
-          apiKey: config.apiKey,
-          model: config.model || "gpt-4o-mini",
-          temperature: config.temperature || 0.7,
-          maxTokens: config.maxTokens || 1000,
+          message: budgetContext,
+          budget: null,
+          config: aiConfig,
         }),
       })
 
@@ -264,18 +295,18 @@ Responda de forma prática e específica para este orçamento. Use linguagem pro
       }
 
       const data = await response.json()
-      console.log("📥 Resposta da IA para chat:", data)
+      console.log("📥 [FollowupForm] Resposta da IA para chat:", data)
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: data.content || "Desculpe, não consegui processar sua solicitação.",
+        content: data.response || "Desculpe, não consegui processar sua solicitação.",
         timestamp: new Date(),
       }
 
       setChatMessages((prev) => [...prev, assistantMessage])
     } catch (error) {
-      console.error("❌ Erro no chat da IA:", error)
+      console.error("❌ [FollowupForm] Erro no chat da IA:", error)
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
@@ -428,8 +459,6 @@ Responda de forma prática e específica para este orçamento. Use linguagem pro
     }
   }
 
-  const config = getAIConfig()
-
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden">
@@ -444,6 +473,11 @@ Responda de forma prática e específica para este orçamento. Use linguagem pro
                 <Badge variant="outline">{budget?.sequencia}</Badge>
                 <Badge variant="secondary">R$ {budget?.valor.toLocaleString("pt-BR")}</Badge>
                 <Badge variant="outline">{calculateDaysOpen(budget?.data || "")} dias em aberto</Badge>
+                {aiConfig && (
+                  <Badge variant="outline" className="bg-green-50 text-green-700">
+                    IA Configurada
+                  </Badge>
+                )}
               </div>
             </div>
           </DialogDescription>
@@ -540,14 +574,11 @@ Responda de forma prática e específica para este orçamento. Use linguagem pro
           </TabsContent>
 
           <TabsContent value="suggestions" className="space-y-4 mt-4">
-            {!config.apiKey ? (
+            {!aiConfig ? (
               <Card>
                 <CardContent className="p-6 text-center">
-                  <Brain className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <h3 className="font-semibold mb-2">IA não configurada</h3>
-                  <p className="text-sm text-gray-600">
-                    Configure sua API Key da OpenAI para receber sugestões inteligentes.
-                  </p>
+                  <Loader2 className="w-8 h-8 text-blue-500 mx-auto mb-4 animate-spin" />
+                  <p className="text-sm text-gray-600">Carregando configuração da IA...</p>
                 </CardContent>
               </Card>
             ) : isLoadingSuggestions ? (
@@ -564,7 +595,7 @@ Responda de forma prática e específica para este orçamento. Use linguagem pro
                     <Lightbulb className="w-5 h-5 text-yellow-500" />
                     Sugestões Personalizadas
                   </h3>
-                  <Button variant="outline" size="sm" onClick={loadAISuggestions}>
+                  <Button variant="outline" size="sm" onClick={() => loadAISuggestions()}>
                     <Zap className="w-4 h-4 mr-2" />
                     Atualizar
                   </Button>
@@ -608,12 +639,11 @@ Responda de forma prática e específica para este orçamento. Use linguagem pro
           </TabsContent>
 
           <TabsContent value="chat" className="space-y-4 mt-4">
-            {!config.apiKey ? (
+            {!aiConfig ? (
               <Card>
                 <CardContent className="p-6 text-center">
-                  <Brain className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <h3 className="font-semibold mb-2">IA não configurada</h3>
-                  <p className="text-sm text-gray-600">Configure sua API Key da OpenAI para usar o chat.</p>
+                  <Loader2 className="w-8 h-8 text-blue-500 mx-auto mb-4 animate-spin" />
+                  <p className="text-sm text-gray-600">Carregando configuração da IA...</p>
                 </CardContent>
               </Card>
             ) : (
@@ -714,7 +744,10 @@ Responda de forma prática e específica para este orçamento. Use linguagem pro
                     <div className="flex items-center gap-2">
                       <Badge variant="outline" className="text-xs">
                         <MessageCircle className="w-3 h-3 mr-1" />
-                        {config.model || "gpt-4o-mini"}
+                        {aiConfig?.model || "gpt-4o-mini"}
+                      </Badge>
+                      <Badge variant="outline" className="text-xs bg-green-50 text-green-700">
+                        Prompt da Planilha
                       </Badge>
                     </div>
                     <div>{chatMessages.length > 0 && `${chatMessages.length} mensagens`}</div>
