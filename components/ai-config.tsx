@@ -2,172 +2,108 @@
 
 import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Slider } from "@/components/ui/slider"
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import {
-  Bot,
-  Settings,
-  TestTube,
-  CheckCircle,
-  AlertCircle,
-  MessageSquare,
-  BarChart3,
-  Shield,
-  Server,
-  RefreshCw,
-  Database,
-  Info,
-} from "lucide-react"
+import { Separator } from "@/components/ui/separator"
+import { AlertCircle, CheckCircle, RefreshCw, Database, Shield, Zap } from "lucide-react"
 import { useAIConfig } from "@/hooks/useAIConfig"
 
 export function AIConfig() {
-  const { config, testConnection, isLoading, refreshConfig } = useAIConfig()
+  const { config, updateConfig, testConnection, isLoading, refreshConfig } = useAIConfig()
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
 
-  const handleRefresh = async () => {
-    setIsRefreshing(true)
-    setTestResult(null)
-    try {
-      await refreshConfig()
-      setTestResult({ success: true, message: "✅ Configuração atualizada da planilha!" })
-    } catch (error) {
-      setTestResult({ success: false, message: "❌ Erro ao atualizar configuração" })
-    } finally {
-      setIsRefreshing(false)
-    }
-  }
-
   const handleTestConnection = async () => {
-    setTestResult(null)
     const result = await testConnection()
     setTestResult(result)
+    setTimeout(() => setTestResult(null), 3000)
+  }
+
+  const handleRefreshConfig = async () => {
+    setIsRefreshing(true)
+    await refreshConfig()
+    setIsRefreshing(false)
+    setTestResult({ success: true, message: "✅ Configuração atualizada da planilha!" })
+    setTimeout(() => setTestResult(null), 2000)
   }
 
   return (
     <div className="space-y-6">
-      <Card className="bg-gradient-to-r from-green-50 to-blue-50 border-green-200">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Shield className="h-5 w-5 text-green-600" />
-            Configuração da IA - Modo Seguro
-          </CardTitle>
-          <CardDescription>
-            Configuração centralizada na planilha Google Sheets. API Key segura no servidor Vercel.
-          </CardDescription>
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-              <Server className="h-3 w-3 mr-1" />
-              API Key no Servidor
-            </Badge>
-            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-              <Database className="h-3 w-3 mr-1" />
-              Config na Planilha
-            </Badge>
-            <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
-              <CheckCircle className="h-3 w-3 mr-1" />
-              Sempre Atualizado
-            </Badge>
-          </div>
-        </CardHeader>
-      </Card>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold">Configuração da IA</h2>
+          <p className="text-muted-foreground">Configure o comportamento da inteligência artificial</p>
+        </div>
+        <div className="flex gap-2">
+          <Badge variant="secondary" className="flex items-center gap-1">
+            <Database className="h-3 w-3" />
+            Config na Planilha
+          </Badge>
+          <Badge variant="outline" className="flex items-center gap-1">
+            <Shield className="h-3 w-3" />
+            IA Segura
+          </Badge>
+        </div>
+      </div>
 
-      <Alert className="bg-blue-50 border-blue-200">
-        <Database className="h-4 w-4 text-blue-600" />
-        <AlertDescription className="text-blue-800">
-          <strong>📊 Leitura Automática:</strong> Os prompts são carregados automaticamente da aba "ConfigIA" da
-          planilha sempre que você entra no sistema. Para ver mudanças feitas na planilha, clique em "Atualizar da
-          Planilha".
-        </AlertDescription>
-      </Alert>
-
-      <Tabs defaultValue="basic" className="space-y-4">
+      <Tabs defaultValue="model" className="space-y-4">
         <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="basic">⚙️ Básico</TabsTrigger>
-          <TabsTrigger value="prompts">💬 Prompts</TabsTrigger>
-          <TabsTrigger value="advanced">🔧 Avançado</TabsTrigger>
+          <TabsTrigger value="model">Modelo</TabsTrigger>
+          <TabsTrigger value="prompts">Prompts</TabsTrigger>
+          <TabsTrigger value="test">Teste</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="basic" className="space-y-4">
+        <TabsContent value="model" className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Settings className="h-5 w-5" />
-                Configurações Básicas
+                <Zap className="h-5 w-5" />
+                Configurações do Modelo
               </CardTitle>
-              <CardDescription>Configurações carregadas da planilha Google Sheets</CardDescription>
+              <CardDescription>Configure o modelo de IA e parâmetros de geração</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="model">Modelo da IA (da planilha)</Label>
-                <div className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md bg-gray-50">{config.model}</div>
-                <p className="text-xs text-gray-500 mt-1">
-                  Valor carregado da aba ConfigIA da planilha. Para alterar, edite na planilha.
-                </p>
-              </div>
-
-              <div className="flex gap-2">
-                <Button onClick={handleTestConnection} disabled={isLoading}>
-                  {isLoading ? (
-                    <>
-                      <Bot className="h-4 w-4 mr-2 animate-spin" />
-                      Testando...
-                    </>
-                  ) : (
-                    <>
-                      <TestTube className="h-4 w-4 mr-2" />
-                      Testar Conexão
-                    </>
-                  )}
-                </Button>
-
-                <Button onClick={handleRefresh} disabled={isRefreshing} variant="outline">
-                  {isRefreshing ? (
-                    <>
-                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                      Atualizando...
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw className="h-4 w-4 mr-2" />
-                      Atualizar da Planilha
-                    </>
-                  )}
-                </Button>
-              </div>
-
-              {testResult && (
-                <Alert variant={testResult.success ? "default" : "destructive"}>
-                  {testResult.success ? <CheckCircle className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
-                  <AlertDescription>{testResult.message}</AlertDescription>
-                </Alert>
-              )}
-
-              <div className="bg-blue-50 p-4 rounded-lg">
-                <h4 className="font-medium text-blue-900 mb-2">📊 Configuração na Planilha:</h4>
-                <div className="text-sm text-blue-800 space-y-1">
-                  <p>
-                    ✅ <strong>Aba "ConfigIA"</strong> criada na planilha
-                  </p>
-                  <p>
-                    ✅ <strong>Carregamento automático</strong> ao entrar no sistema
-                  </p>
-                  <p>
-                    ✅ <strong>Configuração centralizada</strong> para todos os usuários
-                  </p>
-                  <p>
-                    ✅ <strong>Backup automático</strong> no Google Drive
-                  </p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="model">Modelo</Label>
+                  <Input
+                    id="model"
+                    value={config.model}
+                    onChange={(e) => updateConfig({ ...config, model: e.target.value })}
+                    placeholder="gpt-4o-mini"
+                  />
                 </div>
-                <div className="mt-3 p-2 bg-green-100 rounded border-l-4 border-green-400">
-                  <p className="text-sm text-green-800">
-                    <strong>💡 Como usar:</strong> Edite os prompts diretamente na planilha (aba ConfigIA) e clique em
-                    "Atualizar da Planilha" para carregar as mudanças no sistema.
-                  </p>
+                <div className="space-y-2">
+                  <Label htmlFor="maxTokens">Máximo de Tokens</Label>
+                  <Input
+                    id="maxTokens"
+                    type="number"
+                    value={config.maxTokens}
+                    onChange={(e) => updateConfig({ ...config, maxTokens: Number.parseInt(e.target.value) || 1000 })}
+                    placeholder="1000"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="temperature">Temperatura: {config.temperature}</Label>
+                <Slider
+                  id="temperature"
+                  min={0}
+                  max={2}
+                  step={0.1}
+                  value={[config.temperature]}
+                  onValueChange={(value) => updateConfig({ ...config, temperature: value[0] })}
+                  className="w-full"
+                />
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Mais Preciso</span>
+                  <span>Mais Criativo</span>
                 </div>
               </div>
             </CardContent>
@@ -178,181 +114,159 @@ export function AIConfig() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <MessageSquare className="h-5 w-5" />
-                Prompts da Planilha (Somente Leitura)
+                <Database className="h-5 w-5" />
+                Prompts Personalizados
               </CardTitle>
               <CardDescription>
-                Prompts carregados automaticamente da aba "ConfigIA" da planilha Google Sheets
+                Prompts são carregados da planilha (aba ConfigIA). Para alterar, edite diretamente na planilha.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <Alert className="bg-yellow-50 border-yellow-200">
-                <Info className="h-4 w-4 text-yellow-600" />
-                <AlertDescription className="text-yellow-800">
-                  <strong>📝 Para editar os prompts:</strong> Vá na planilha Google Sheets → aba "ConfigIA" → edite os
-                  valores na coluna B → volte aqui e clique em "Atualizar da Planilha"
-                </AlertDescription>
-              </Alert>
-
-              <div>
-                <Label htmlFor="systemPrompt">Prompt do Sistema (da planilha)</Label>
-                <Textarea id="systemPrompt" value={config.systemPrompt} readOnly rows={4} className="mt-1 bg-gray-50" />
-                <p className="text-xs text-gray-500 mt-1">
-                  Define como a IA se comporta. Para alterar, edite na planilha ConfigIA linha "systemPrompt".
-                </p>
-                <p className="text-xs text-blue-600 mt-1">Caracteres: {config.systemPrompt.length}</p>
-              </div>
-
-              <div>
-                <Label htmlFor="followupPrompt">Prompt para Follow-ups (da planilha)</Label>
-                <Textarea
-                  id="followupPrompt"
-                  value={config.followupPrompt}
-                  readOnly
-                  rows={8}
-                  className="mt-1 bg-gray-50"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Usado para sugestões de follow-up. Para alterar, edite na planilha ConfigIA linha "followupPrompt".
-                </p>
-                <p className="text-xs text-blue-600 mt-1">Caracteres: {config.followupPrompt.length}</p>
-              </div>
-
-              <div>
-                <Label htmlFor="analysisPrompt">Prompt para Análises (da planilha)</Label>
-                <Textarea
-                  id="analysisPrompt"
-                  value={config.analysisPrompt}
-                  readOnly
-                  rows={4}
-                  className="mt-1 bg-gray-50"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Usado para análises detalhadas. Para alterar, edite na planilha ConfigIA linha "analysisPrompt".
-                </p>
-                <p className="text-xs text-blue-600 mt-1">Caracteres: {config.analysisPrompt.length}</p>
-              </div>
-
-              <div className="flex gap-2">
-                <Button onClick={handleRefresh} disabled={isRefreshing} className="bg-blue-600 hover:bg-blue-700">
-                  {isRefreshing ? (
-                    <>
-                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                      Atualizando da Planilha...
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw className="h-4 w-4 mr-2" />
-                      Atualizar da Planilha
-                    </>
-                  )}
+              <div className="flex justify-between items-center">
+                <Badge variant="outline" className="flex items-center gap-1">
+                  <Database className="h-3 w-3" />
+                  Centralizado na Planilha
+                </Badge>
+                <Button
+                  onClick={handleRefreshConfig}
+                  disabled={isRefreshing}
+                  variant="outline"
+                  size="sm"
+                  className="flex items-center gap-2 bg-transparent"
+                >
+                  <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+                  {isRefreshing ? "Atualizando..." : "Atualizar da Planilha"}
                 </Button>
               </div>
 
-              {testResult && (
-                <Alert variant={testResult.success ? "default" : "destructive"} className="mt-4">
-                  {testResult.success ? (
-                    <CheckCircle className="h-4 w-4 text-green-600" />
-                  ) : (
-                    <AlertCircle className="h-4 w-4 text-red-600" />
-                  )}
-                  <AlertDescription className={testResult.success ? "text-green-800" : "text-red-800"}>
-                    {testResult.message}
-                  </AlertDescription>
-                </Alert>
-              )}
+              <Separator />
 
-              <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-                <h4 className="font-medium text-green-900 mb-2">📊 Vantagens da Configuração na Planilha:</h4>
-                <ul className="text-sm text-green-800 space-y-1">
-                  <li>
-                    ✅ <strong>Sempre atualizado:</strong> Carrega automaticamente ao entrar no sistema
-                  </li>
-                  <li>
-                    ✅ <strong>Centralizado:</strong> Uma configuração para todos os usuários
-                  </li>
-                  <li>
-                    ✅ <strong>Persistente:</strong> Nunca perde as configurações
-                  </li>
-                  <li>
-                    ✅ <strong>Fácil edição:</strong> Edita direto na planilha Google Sheets
-                  </li>
-                  <li>
-                    ✅ <strong>Backup automático:</strong> Salvo no Google Drive
-                  </li>
-                </ul>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="systemPrompt">Prompt do Sistema</Label>
+                  <Textarea
+                    id="systemPrompt"
+                    value={config.systemPrompt}
+                    readOnly
+                    className="min-h-[120px] bg-muted/50"
+                    placeholder="Carregando da planilha..."
+                  />
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>Somente leitura - edite na planilha</span>
+                    <span>{config.systemPrompt.length} caracteres</span>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="followupPrompt">Prompt para Follow-ups</Label>
+                  <Textarea
+                    id="followupPrompt"
+                    value={config.followupPrompt}
+                    readOnly
+                    className="min-h-[120px] bg-muted/50"
+                    placeholder="Carregando da planilha..."
+                  />
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>Somente leitura - edite na planilha</span>
+                    <span>{config.followupPrompt.length} caracteres</span>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="analysisPrompt">Prompt para Análises</Label>
+                  <Textarea
+                    id="analysisPrompt"
+                    value={config.analysisPrompt}
+                    readOnly
+                    className="min-h-[120px] bg-muted/50"
+                    placeholder="Carregando da planilha..."
+                  />
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>Somente leitura - edite na planilha</span>
+                    <span>{config.analysisPrompt.length} caracteres</span>
+                  </div>
+                </div>
               </div>
 
-              <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
-                <h4 className="font-medium text-yellow-900 mb-2">📝 Como Editar os Prompts:</h4>
-                <ol className="text-sm text-yellow-800 space-y-1 list-decimal list-inside">
-                  <li>Abra a planilha Google Sheets</li>
-                  <li>Vá na aba "ConfigIA"</li>
-                  <li>Edite os valores na coluna B:</li>
-                  <li className="ml-4">• systemPrompt (linha 2)</li>
-                  <li className="ml-4">• followupPrompt (linha 3)</li>
-                  <li className="ml-4">• analysisPrompt (linha 4)</li>
-                  <li>Volte aqui e clique em "Atualizar da Planilha"</li>
-                </ol>
+              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5" />
+                  <div className="text-sm">
+                    <p className="font-medium text-blue-900">Como personalizar os prompts:</p>
+                    <ol className="mt-2 space-y-1 text-blue-800 list-decimal list-inside">
+                      <li>Abra sua planilha do Google Sheets</li>
+                      <li>Vá para a aba "ConfigIA"</li>
+                      <li>Edite os valores na coluna B (systemPrompt, followupPrompt, analysisPrompt)</li>
+                      <li>Volte aqui e clique em "Atualizar da Planilha"</li>
+                    </ol>
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>
         </TabsContent>
 
-        <TabsContent value="advanced" className="space-y-4">
+        <TabsContent value="test" className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <BarChart3 className="h-5 w-5" />
-                Configurações Avançadas (da planilha)
+                <CheckCircle className="h-5 w-5" />
+                Teste de Conexão
               </CardTitle>
-              <CardDescription>Parâmetros carregados da aba ConfigIA da planilha</CardDescription>
+              <CardDescription>Verifique se a IA está funcionando corretamente</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-6">
-              <div>
-                <Label htmlFor="temperature">Criatividade (Temperature): {config.temperature}</Label>
-                <div className="mt-2 px-3 py-2 border border-gray-300 rounded-md bg-gray-50">
-                  Valor da planilha: {config.temperature}
-                </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  Para alterar, edite na planilha ConfigIA linha "temperature"
-                </p>
+            <CardContent className="space-y-4">
+              <div className="flex gap-2">
+                <Button onClick={handleTestConnection} disabled={isLoading} className="flex items-center gap-2">
+                  {isLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                  {isLoading ? "Testando..." : "Testar Conexão"}
+                </Button>
               </div>
 
-              <div>
-                <Label htmlFor="maxTokens">Tamanho Máximo da Resposta: {config.maxTokens}</Label>
-                <div className="mt-2 px-3 py-2 border border-gray-300 rounded-md bg-gray-50">
-                  Valor da planilha: {config.maxTokens} tokens
+              {testResult && (
+                <div
+                  className={`p-4 rounded-lg border ${
+                    testResult.success
+                      ? "bg-green-50 border-green-200 text-green-800"
+                      : "bg-red-50 border-red-200 text-red-800"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    {testResult.success ? (
+                      <CheckCircle className="h-5 w-5 text-green-600" />
+                    ) : (
+                      <AlertCircle className="h-5 w-5 text-red-600" />
+                    )}
+                    <span className="font-medium">{testResult.message}</span>
+                  </div>
                 </div>
-                <p className="text-xs text-gray-500 mt-1">Para alterar, edite na planilha ConfigIA linha "maxTokens"</p>
-              </div>
+              )}
 
-              <div className="bg-blue-50 p-4 rounded-lg">
-                <h4 className="font-medium text-blue-900 mb-2">📊 Estrutura da Aba ConfigIA:</h4>
-                <div className="text-sm text-blue-800 font-mono bg-white p-2 rounded">
-                  <div>A1: Tipo | B1: Valor</div>
-                  <div>A2: systemPrompt | B2: [seu prompt]</div>
-                  <div>A3: followupPrompt | B3: [seu prompt]</div>
-                  <div>A4: analysisPrompt | B4: [seu prompt]</div>
-                  <div>A5: model | B5: gpt-4o-mini</div>
-                  <div>A6: temperature | B6: 0.7</div>
-                  <div>A7: maxTokens | B7: 1000</div>
+              <div className="bg-gray-50 p-4 rounded-lg border">
+                <h4 className="font-medium mb-2">Status da Configuração:</h4>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span>Modelo:</span>
+                    <Badge variant="outline">{config.model}</Badge>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Temperatura:</span>
+                    <Badge variant="outline">{config.temperature}</Badge>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Max Tokens:</span>
+                    <Badge variant="outline">{config.maxTokens}</Badge>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>API Key:</span>
+                    <Badge variant="secondary">Configurada no Servidor</Badge>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Prompts:</span>
+                    <Badge variant="secondary">Carregados da Planilha</Badge>
+                  </div>
                 </div>
               </div>
-
-              <Button onClick={handleRefresh} className="w-full" disabled={isRefreshing}>
-                {isRefreshing ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                    Atualizando da Planilha...
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    Atualizar Todas as Configurações da Planilha
-                  </>
-                )}
-              </Button>
             </CardContent>
           </Card>
         </TabsContent>
