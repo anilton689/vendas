@@ -1,11 +1,10 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Slider } from "@/components/ui/slider"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -13,7 +12,6 @@ import {
   Bot,
   Settings,
   TestTube,
-  Save,
   CheckCircle,
   AlertCircle,
   MessageSquare,
@@ -22,53 +20,14 @@ import {
   Server,
   RefreshCw,
   Database,
+  Info,
 } from "lucide-react"
 import { useAIConfig } from "@/hooks/useAIConfig"
 
 export function AIConfig() {
-  const { config, updateConfig, testConnection, isLoading, refreshConfig } = useAIConfig()
-  const [localConfig, setLocalConfig] = useState(config)
+  const { config, testConnection, isLoading, refreshConfig } = useAIConfig()
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
-  const [isSaving, setIsSaving] = useState(false)
-  const [isSavingPrompts, setIsSavingPrompts] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
-
-  // Sincronizar com configuração carregada
-  useEffect(() => {
-    setLocalConfig(config)
-  }, [config])
-
-  const saveConfig = async () => {
-    setIsSaving(true)
-    try {
-      await updateConfig(localConfig)
-      setTestResult({ success: true, message: "✅ Configuração salva na planilha com sucesso!" })
-    } catch (error) {
-      console.error("❌ Erro ao salvar configuração:", error)
-      setTestResult({ success: false, message: "❌ Erro ao salvar configuração na planilha" })
-    } finally {
-      setIsSaving(false)
-    }
-  }
-
-  const savePrompts = async () => {
-    setIsSavingPrompts(true)
-    setTestResult(null)
-
-    try {
-      console.log("💬 Salvando prompts personalizados na planilha...")
-
-      await updateConfig(localConfig)
-      setTestResult({ success: true, message: "✅ Prompts salvos na planilha com sucesso!" })
-    } catch (error) {
-      console.error("❌ Erro ao salvar prompts:", error)
-      setTestResult({ success: false, message: "❌ Erro ao salvar prompts na planilha" })
-    } finally {
-      setTimeout(() => {
-        setIsSavingPrompts(false)
-      }, 1500)
-    }
-  }
 
   const handleRefresh = async () => {
     setIsRefreshing(true)
@@ -87,36 +46,6 @@ export function AIConfig() {
     setTestResult(null)
     const result = await testConnection()
     setTestResult(result)
-  }
-
-  const resetToDefaults = () => {
-    const defaultConfig = {
-      model: "gpt-4o-mini",
-      temperature: 0.7,
-      maxTokens: 1000,
-      systemPrompt: `Você é um assistente especializado em vendas e follow-up de orçamentos. 
-Seu objetivo é ajudar vendedores a fechar mais negócios através de análises inteligentes e sugestões estratégicas.
-Seja sempre prático, direto e focado em resultados.`,
-      followupPrompt: `Analise este orçamento e forneça sugestões específicas para o próximo follow-up em formato de lista clara:
-
-• **Próxima Ação:** [Qual a melhor abordagem para este cliente?]
-• **Timing:** [Quando fazer o próximo contato?]
-• **Argumentos:** [Que argumentos usar?]
-• **Objeções:** [Como superar possíveis objeções?]
-• **Estratégia:** [Estratégia específica para este caso]
-
-Use SEMPRE este formato de lista com bullets (•) e negrito (**) nos títulos.
-Seja direto e prático. Máximo 5 pontos.`,
-      analysisPrompt: `Analise este orçamento e forneça:
-1. Probabilidade de fechamento (0-100%)
-2. Principais motivos que podem influenciar a decisão
-3. Estratégias recomendadas
-4. Próximos passos sugeridos`,
-      isConfigured: true,
-    }
-
-    setLocalConfig(defaultConfig)
-    console.log("🔄 Configuração resetada para padrões")
   }
 
   return (
@@ -141,7 +70,7 @@ Seja direto e prático. Máximo 5 pontos.`,
             </Badge>
             <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
               <CheckCircle className="h-3 w-3 mr-1" />
-              Centralizado
+              Sempre Atualizado
             </Badge>
           </div>
         </CardHeader>
@@ -150,9 +79,9 @@ Seja direto e prático. Máximo 5 pontos.`,
       <Alert className="bg-blue-50 border-blue-200">
         <Database className="h-4 w-4 text-blue-600" />
         <AlertDescription className="text-blue-800">
-          <strong>📊 Configuração Centralizada:</strong> Os prompts e configurações da IA são lidos da aba "ConfigIA" da
-          planilha Google Sheets. Isso garante que todos os usuários usem a mesma configuração e nunca percam as
-          personalizações.
+          <strong>📊 Leitura Automática:</strong> Os prompts são carregados automaticamente da aba "ConfigIA" da
+          planilha sempre que você entra no sistema. Para ver mudanças feitas na planilha, clique em "Atualizar da
+          Planilha".
         </AlertDescription>
       </Alert>
 
@@ -170,23 +99,14 @@ Seja direto e prático. Máximo 5 pontos.`,
                 <Settings className="h-5 w-5" />
                 Configurações Básicas
               </CardTitle>
-              <CardDescription>Configure o modelo e parâmetros da IA (salvo na planilha)</CardDescription>
+              <CardDescription>Configurações carregadas da planilha Google Sheets</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <Label htmlFor="model">Modelo da IA</Label>
-                <select
-                  id="model"
-                  value={localConfig.model}
-                  onChange={(e) => setLocalConfig({ ...localConfig, model: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="gpt-4o-mini">GPT-4o Mini (Recomendado)</option>
-                  <option value="gpt-4o">GPT-4o (Mais Avançado)</option>
-                  <option value="gpt-3.5-turbo">GPT-3.5 Turbo (Mais Rápido)</option>
-                </select>
+                <Label htmlFor="model">Modelo da IA (da planilha)</Label>
+                <div className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md bg-gray-50">{config.model}</div>
                 <p className="text-xs text-gray-500 mt-1">
-                  GPT-4o Mini oferece o melhor custo-benefício para análises de vendas
+                  Valor carregado da aba ConfigIA da planilha. Para alterar, edite na planilha.
                 </p>
               </div>
 
@@ -218,20 +138,6 @@ Seja direto e prático. Máximo 5 pontos.`,
                     </>
                   )}
                 </Button>
-
-                <Button onClick={saveConfig} disabled={isSaving}>
-                  {isSaving ? (
-                    <>
-                      <Save className="h-4 w-4 mr-2 animate-spin" />
-                      Salvando...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="h-4 w-4 mr-2" />
-                      Salvar na Planilha
-                    </>
-                  )}
-                </Button>
               </div>
 
               {testResult && (
@@ -248,19 +154,19 @@ Seja direto e prático. Máximo 5 pontos.`,
                     ✅ <strong>Aba "ConfigIA"</strong> criada na planilha
                   </p>
                   <p>
+                    ✅ <strong>Carregamento automático</strong> ao entrar no sistema
+                  </p>
+                  <p>
                     ✅ <strong>Configuração centralizada</strong> para todos os usuários
                   </p>
                   <p>
                     ✅ <strong>Backup automático</strong> no Google Drive
                   </p>
-                  <p>
-                    ✅ <strong>Nunca perde</strong> as personalizações
-                  </p>
                 </div>
                 <div className="mt-3 p-2 bg-green-100 rounded border-l-4 border-green-400">
                   <p className="text-sm text-green-800">
-                    <strong>💡 Dica:</strong> Você pode editar os prompts diretamente na planilha (aba ConfigIA) e
-                    clicar em "Atualizar da Planilha" para carregar as mudanças.
+                    <strong>💡 Como usar:</strong> Edite os prompts diretamente na planilha (aba ConfigIA) e clique em
+                    "Atualizar da Planilha" para carregar as mudanças no sistema.
                   </p>
                 </div>
               </div>
@@ -273,75 +179,71 @@ Seja direto e prático. Máximo 5 pontos.`,
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <MessageSquare className="h-5 w-5" />
-                Prompts Personalizados
+                Prompts da Planilha (Somente Leitura)
               </CardTitle>
               <CardDescription>
-                Personalize como a IA analisa e responde. As alterações são salvas na planilha Google Sheets.
+                Prompts carregados automaticamente da aba "ConfigIA" da planilha Google Sheets
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <Alert className="bg-yellow-50 border-yellow-200">
+                <Info className="h-4 w-4 text-yellow-600" />
+                <AlertDescription className="text-yellow-800">
+                  <strong>📝 Para editar os prompts:</strong> Vá na planilha Google Sheets → aba "ConfigIA" → edite os
+                  valores na coluna B → volte aqui e clique em "Atualizar da Planilha"
+                </AlertDescription>
+              </Alert>
+
               <div>
-                <Label htmlFor="systemPrompt">Prompt do Sistema</Label>
-                <Textarea
-                  id="systemPrompt"
-                  placeholder="Defina a personalidade e comportamento da IA..."
-                  value={localConfig.systemPrompt}
-                  onChange={(e) => setLocalConfig({ ...localConfig, systemPrompt: e.target.value })}
-                  rows={4}
-                  className="mt-1"
-                />
-                <p className="text-xs text-gray-500 mt-1">Define como a IA se comporta e qual é seu papel principal</p>
-                <p className="text-xs text-blue-600 mt-1">Caracteres: {localConfig.systemPrompt.length}</p>
+                <Label htmlFor="systemPrompt">Prompt do Sistema (da planilha)</Label>
+                <Textarea id="systemPrompt" value={config.systemPrompt} readOnly rows={4} className="mt-1 bg-gray-50" />
+                <p className="text-xs text-gray-500 mt-1">
+                  Define como a IA se comporta. Para alterar, edite na planilha ConfigIA linha "systemPrompt".
+                </p>
+                <p className="text-xs text-blue-600 mt-1">Caracteres: {config.systemPrompt.length}</p>
               </div>
 
               <div>
-                <Label htmlFor="followupPrompt">Prompt para Follow-ups</Label>
+                <Label htmlFor="followupPrompt">Prompt para Follow-ups (da planilha)</Label>
                 <Textarea
                   id="followupPrompt"
-                  placeholder="Instruções para sugestões de follow-up..."
-                  value={localConfig.followupPrompt}
-                  onChange={(e) => setLocalConfig({ ...localConfig, followupPrompt: e.target.value })}
+                  value={config.followupPrompt}
+                  readOnly
                   rows={8}
-                  className="mt-1"
+                  className="mt-1 bg-gray-50"
                 />
-                <p className="text-xs text-gray-500 mt-1">Usado quando a IA sugere estratégias de follow-up</p>
-                <p className="text-xs text-blue-600 mt-1">Caracteres: {localConfig.followupPrompt.length}</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Usado para sugestões de follow-up. Para alterar, edite na planilha ConfigIA linha "followupPrompt".
+                </p>
+                <p className="text-xs text-blue-600 mt-1">Caracteres: {config.followupPrompt.length}</p>
               </div>
 
               <div>
-                <Label htmlFor="analysisPrompt">Prompt para Análises</Label>
+                <Label htmlFor="analysisPrompt">Prompt para Análises (da planilha)</Label>
                 <Textarea
                   id="analysisPrompt"
-                  placeholder="Instruções para análise de orçamentos..."
-                  value={localConfig.analysisPrompt}
-                  onChange={(e) => setLocalConfig({ ...localConfig, analysisPrompt: e.target.value })}
+                  value={config.analysisPrompt}
+                  readOnly
                   rows={4}
-                  className="mt-1"
+                  className="mt-1 bg-gray-50"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Usado para análises detalhadas de probabilidade de fechamento
+                  Usado para análises detalhadas. Para alterar, edite na planilha ConfigIA linha "analysisPrompt".
                 </p>
-                <p className="text-xs text-blue-600 mt-1">Caracteres: {localConfig.analysisPrompt.length}</p>
+                <p className="text-xs text-blue-600 mt-1">Caracteres: {config.analysisPrompt.length}</p>
               </div>
 
               <div className="flex gap-2">
-                <Button onClick={resetToDefaults} variant="outline">
-                  🔄 Restaurar Padrões
-                </Button>
-                <Button
-                  onClick={savePrompts}
-                  className="bg-green-600 hover:bg-green-700 text-white"
-                  disabled={isSavingPrompts}
-                >
-                  {isSavingPrompts ? (
+                <Button onClick={handleRefresh} disabled={isRefreshing} className="bg-blue-600 hover:bg-blue-700">
+                  {isRefreshing ? (
                     <>
-                      <Save className="h-4 w-4 mr-2 animate-spin" />
-                      Salvando na Planilha...
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      Atualizando da Planilha...
                     </>
                   ) : (
                     <>
-                      <Save className="h-4 w-4 mr-2" />
-                      Salvar na Planilha
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Atualizar da Planilha
                     </>
                   )}
                 </Button>
@@ -364,42 +266,34 @@ Seja direto e prático. Máximo 5 pontos.`,
                 <h4 className="font-medium text-green-900 mb-2">📊 Vantagens da Configuração na Planilha:</h4>
                 <ul className="text-sm text-green-800 space-y-1">
                   <li>
+                    ✅ <strong>Sempre atualizado:</strong> Carrega automaticamente ao entrar no sistema
+                  </li>
+                  <li>
                     ✅ <strong>Centralizado:</strong> Uma configuração para todos os usuários
                   </li>
                   <li>
                     ✅ <strong>Persistente:</strong> Nunca perde as configurações
                   </li>
                   <li>
-                    ✅ <strong>Multiplataforma:</strong> Funciona em qualquer dispositivo
+                    ✅ <strong>Fácil edição:</strong> Edita direto na planilha Google Sheets
                   </li>
                   <li>
                     ✅ <strong>Backup automático:</strong> Salvo no Google Drive
-                  </li>
-                  <li>
-                    ✅ <strong>Fácil edição:</strong> Pode alterar direto na planilha
                   </li>
                 </ul>
               </div>
 
               <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
-                <h4 className="font-medium text-yellow-900 mb-2">💡 Dicas para Prompts Eficazes:</h4>
-                <ul className="text-sm text-yellow-800 space-y-1">
-                  <li>
-                    • <strong>Seja específico:</strong> Detalhe exatamente o que você quer
-                  </li>
-                  <li>
-                    • <strong>Use exemplos:</strong> Mostre o formato desejado das respostas
-                  </li>
-                  <li>
-                    • <strong>Defina o tom:</strong> Profissional, amigável, técnico, etc.
-                  </li>
-                  <li>
-                    • <strong>Limite o escopo:</strong> Foque no que é mais importante
-                  </li>
-                  <li>
-                    • <strong>Teste sempre:</strong> Faça testes após personalizar
-                  </li>
-                </ul>
+                <h4 className="font-medium text-yellow-900 mb-2">📝 Como Editar os Prompts:</h4>
+                <ol className="text-sm text-yellow-800 space-y-1 list-decimal list-inside">
+                  <li>Abra a planilha Google Sheets</li>
+                  <li>Vá na aba "ConfigIA"</li>
+                  <li>Edite os valores na coluna B:</li>
+                  <li className="ml-4">• systemPrompt (linha 2)</li>
+                  <li className="ml-4">• followupPrompt (linha 3)</li>
+                  <li className="ml-4">• analysisPrompt (linha 4)</li>
+                  <li>Volte aqui e clique em "Atualizar da Planilha"</li>
+                </ol>
               </div>
             </CardContent>
           </Card>
@@ -410,69 +304,52 @@ Seja direto e prático. Máximo 5 pontos.`,
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <BarChart3 className="h-5 w-5" />
-                Configurações Avançadas
+                Configurações Avançadas (da planilha)
               </CardTitle>
-              <CardDescription>Ajuste fino dos parâmetros da IA (salvo na planilha)</CardDescription>
+              <CardDescription>Parâmetros carregados da aba ConfigIA da planilha</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div>
-                <Label htmlFor="temperature">Criatividade (Temperature): {localConfig.temperature}</Label>
-                <Slider
-                  id="temperature"
-                  min={0}
-                  max={1}
-                  step={0.1}
-                  value={[localConfig.temperature]}
-                  onValueChange={(value) => setLocalConfig({ ...localConfig, temperature: value[0] })}
-                  className="mt-2"
-                />
-                <div className="flex justify-between text-xs text-gray-500 mt-1">
-                  <span>Mais Conservador</span>
-                  <span>Mais Criativo</span>
+                <Label htmlFor="temperature">Criatividade (Temperature): {config.temperature}</Label>
+                <div className="mt-2 px-3 py-2 border border-gray-300 rounded-md bg-gray-50">
+                  Valor da planilha: {config.temperature}
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  0.7 é ideal para análises de vendas - equilibra precisão e criatividade
+                  Para alterar, edite na planilha ConfigIA linha "temperature"
                 </p>
               </div>
 
               <div>
-                <Label htmlFor="maxTokens">Tamanho Máximo da Resposta</Label>
-                <input
-                  id="maxTokens"
-                  type="number"
-                  min={100}
-                  max={4000}
-                  value={localConfig.maxTokens}
-                  onChange={(e) =>
-                    setLocalConfig({ ...localConfig, maxTokens: Number.parseInt(e.target.value) || 1000 })
-                  }
-                  className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  1000 tokens ≈ 750 palavras. Mais tokens = respostas mais detalhadas (e mais caras)
-                </p>
+                <Label htmlFor="maxTokens">Tamanho Máximo da Resposta: {config.maxTokens}</Label>
+                <div className="mt-2 px-3 py-2 border border-gray-300 rounded-md bg-gray-50">
+                  Valor da planilha: {config.maxTokens} tokens
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Para alterar, edite na planilha ConfigIA linha "maxTokens"</p>
               </div>
 
-              <div className="bg-yellow-50 p-4 rounded-lg">
-                <h4 className="font-medium text-yellow-900 mb-2">💡 Dicas de Otimização:</h4>
-                <ul className="text-sm text-yellow-800 space-y-1">
-                  <li>• Temperature 0.7: Equilibrio ideal para vendas</li>
-                  <li>• Max Tokens 1000: Suficiente para análises detalhadas</li>
-                  <li>• GPT-4o Mini: Melhor custo-benefício</li>
-                  <li>• Prompts específicos geram melhores resultados</li>
-                </ul>
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <h4 className="font-medium text-blue-900 mb-2">📊 Estrutura da Aba ConfigIA:</h4>
+                <div className="text-sm text-blue-800 font-mono bg-white p-2 rounded">
+                  <div>A1: Tipo | B1: Valor</div>
+                  <div>A2: systemPrompt | B2: [seu prompt]</div>
+                  <div>A3: followupPrompt | B3: [seu prompt]</div>
+                  <div>A4: analysisPrompt | B4: [seu prompt]</div>
+                  <div>A5: model | B5: gpt-4o-mini</div>
+                  <div>A6: temperature | B6: 0.7</div>
+                  <div>A7: maxTokens | B7: 1000</div>
+                </div>
               </div>
 
-              <Button onClick={saveConfig} className="w-full" disabled={isSaving}>
-                {isSaving ? (
+              <Button onClick={handleRefresh} className="w-full" disabled={isRefreshing}>
+                {isRefreshing ? (
                   <>
-                    <Save className="h-4 w-4 mr-2 animate-spin" />
-                    Salvando na Planilha...
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    Atualizando da Planilha...
                   </>
                 ) : (
                   <>
-                    <Save className="h-4 w-4 mr-2" />
-                    Salvar Todas as Configurações na Planilha
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Atualizar Todas as Configurações da Planilha
                   </>
                 )}
               </Button>
