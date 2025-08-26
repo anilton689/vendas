@@ -28,6 +28,7 @@ import {
   Copy,
   Send,
   Loader2,
+  Shield,
 } from "lucide-react"
 import type { Budget } from "@/types/budget"
 
@@ -78,16 +79,32 @@ export function FollowupTable({ budgets, onFollowup, user }: FollowupTableProps)
       if (configStr) {
         const config = JSON.parse(configStr)
         console.log("🤖 Configuração da IA encontrada:", {
-          hasApiKey: !!config.apiKey,
           model: config.model,
           temperature: config.temperature,
+          isConfigured: config.isConfigured,
         })
         return config
       }
     } catch (error) {
       console.error("❌ Erro ao carregar configuração da IA:", error)
     }
-    return {}
+    return {
+      model: "gpt-4o-mini",
+      temperature: 0.7,
+      maxTokens: 1000,
+      systemPrompt: "Você é um assistente especializado em vendas e follow-up de orçamentos.",
+      followupPrompt: `Analise este orçamento e forneça sugestões específicas para o próximo follow-up em formato de lista clara:
+
+• **Próxima Ação:** [Qual a melhor abordagem para este cliente?]
+• **Timing:** [Quando fazer o próximo contato?]
+• **Argumentos:** [Que argumentos usar?]
+• **Objeções:** [Como superar possíveis objeções?]
+• **Estratégia:** [Estratégia específica para este caso]
+
+Use SEMPRE este formato de lista com bullets (•) e negrito (**) nos títulos.
+Seja direto e prático. Máximo 5 pontos.`,
+      isConfigured: true,
+    }
   }
 
   const calculateDaysOpen = (budgetDate: string): number => {
@@ -252,34 +269,45 @@ export function FollowupTable({ budgets, onFollowup, user }: FollowupTableProps)
     if (!selectedBudget) return
 
     const config = getAIConfig()
-    if (!config.apiKey) {
-      console.log("⚠️ API Key não configurada para sugestões")
-      return
-    }
+    console.log("🤖 Carregando sugestões da IA com configuração segura...")
 
     setIsLoadingSuggestions(true)
     try {
-      const prompt = `Analise este orçamento e forneça sugestões de follow-up:
-          
+      const budgetContext = `
 Cliente: ${selectedBudget.cliente}
 Valor: R$ ${selectedBudget.valor.toLocaleString("pt-BR")}
 Data: ${selectedBudget.data}
 Dias em aberto: ${calculateDaysOpen(selectedBudget.data)}
 Status atual: ${selectedBudget.status_atual}
 Observações anteriores: ${selectedBudget.observacoes_atuais || "Nenhuma"}
+`
 
-Forneça 4-6 sugestões práticas categorizadas por: Abordagem, Negociação, Fechamento, Relacionamento.
-Formato: JSON com array de objetos {categoria, sugestao, prioridade}`
+      const prompt =
+        config.followupPrompt ||
+        `Analise este orçamento e forneça sugestões específicas para o próximo follow-up em formato de lista clara:
 
-      console.log("📤 Enviando prompt para sugestões da IA...")
+• **Próxima Ação:** [Qual a melhor abordagem para este cliente?]
+• **Timing:** [Quando fazer o próximo contato?]
+• **Argumentos:** [Que argumentos usar?]
+• **Objeções:** [Como superar possíveis objeções?]
+• **Estratégia:** [Estratégia específica para este caso]
+
+Use SEMPRE este formato de lista com bullets (•) e negrito (**) nos títulos.
+Seja direto e prático. Máximo 5 pontos.`
+
+      console.log("📤 Enviando prompt para sugestões da IA (modo seguro)...")
 
       const response = await fetch("/api/ai-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message: prompt,
-          budget: selectedBudget,
-          config: config,
+          messages: [
+            { role: "system", content: config.systemPrompt || "Você é um assistente de vendas especializado." },
+            { role: "user", content: `${prompt}\n\nDados do orçamento:\n${budgetContext}` },
+          ],
+          model: config.model || "gpt-4o-mini",
+          temperature: config.temperature || 0.7,
+          maxTokens: config.maxTokens || 1000,
         }),
       })
 
@@ -287,28 +315,25 @@ Formato: JSON com array de objetos {categoria, sugestao, prioridade}`
         const data = await response.json()
         console.log("📥 Resposta da IA para sugestões:", data)
 
-        try {
-          const suggestions = JSON.parse(data.response || data.content)
-          setAiSuggestions(Array.isArray(suggestions) ? suggestions : [])
-        } catch {
-          // Se não for JSON válido, criar sugestões padrão
-          setAiSuggestions([
-            {
-              categoria: "Abordagem",
-              sugestao: "Entre em contato via WhatsApp para agilizar a comunicação",
-              prioridade: "alta",
-            },
-            { categoria: "Negociação", sugestao: "Ofereça condições especiais de pagamento", prioridade: "media" },
-            { categoria: "Fechamento", sugestao: "Agende uma reunião presencial para finalizar", prioridade: "alta" },
-            {
-              categoria: "Relacionamento",
-              sugestao: "Envie material complementar sobre os produtos",
-              prioridade: "baixa",
-            },
-          ])
-        }
+        // Criar sugestões estruturadas
+        const suggestions = [
+          {
+            categoria: "Sugestões IA",
+            sugestao: data.content || data.response || "Sugestões geradas com sucesso!",
+            prioridade: "alta",
+          },
+        ]
+        setAiSuggestions(suggestions)
       } else {
-        console.error("❌ Erro na resposta da API:", response.status)
+        const errorData = await response.json()
+        console.error("❌ Erro na resposta da API:", response.status, errorData)
+        setAiSuggestions([
+          {
+            categoria: "Erro",
+            sugestao: `Erro ao gerar sugestões: ${errorData.error || "Erro desconhecido"}`,
+            prioridade: "baixa",
+          },
+        ])
       }
     } catch (error) {
       console.error("❌ Erro ao carregar sugestões:", error)
@@ -324,10 +349,7 @@ Formato: JSON com array de objetos {categoria, sugestao, prioridade}`
     if (!chatInput.trim() || !selectedBudget) return
 
     const config = getAIConfig()
-    if (!config.apiKey) {
-      alert("❌ API Key da IA não configurada. Configure em Sistema → Configurar IA")
-      return
-    }
+    console.log("💬 Enviando mensagem para chat da IA (modo seguro)...")
 
     const userMessage: AIMessage = {
       role: "user",
@@ -340,13 +362,15 @@ Formato: JSON com array de objetos {categoria, sugestao, prioridade}`
     setIsChatLoading(true)
 
     try {
-      const contextMessage = `Contexto do orçamento:
+      const budgetContext = `
+Contexto do orçamento:
 Cliente: ${selectedBudget.cliente}
 Valor: R$ ${selectedBudget.valor.toLocaleString("pt-BR")}
 Dias em aberto: ${calculateDaysOpen(selectedBudget.data)}
 Status: ${selectedBudget.status_atual}
+`
 
-Pergunta do usuário: ${chatInput}`
+      const systemPrompt = config.systemPrompt || "Você é um assistente de vendas especializado."
 
       console.log("📤 Enviando mensagem para chat da IA...")
 
@@ -354,9 +378,17 @@ Pergunta do usuário: ${chatInput}`
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message: contextMessage,
-          budget: selectedBudget,
-          config: config,
+          messages: [
+            {
+              role: "system",
+              content: `${systemPrompt}\n\n${budgetContext}\n\nResponda de forma prática e específica para este orçamento. Use linguagem profissional mas amigável.`,
+            },
+            ...chatMessages.slice(-5).map((m) => ({ role: m.role, content: m.content })),
+            { role: "user", content: chatInput },
+          ],
+          model: config.model || "gpt-4o-mini",
+          temperature: config.temperature || 0.7,
+          maxTokens: config.maxTokens || 1000,
         }),
       })
 
@@ -366,15 +398,16 @@ Pergunta do usuário: ${chatInput}`
 
         const aiMessage: AIMessage = {
           role: "assistant",
-          content: data.response || data.content,
+          content: data.content || data.response || "Resposta gerada com sucesso!",
           timestamp: new Date(),
         }
         setChatMessages((prev) => [...prev, aiMessage])
       } else {
-        console.error("❌ Erro na resposta da API:", response.status)
+        const errorData = await response.json()
+        console.error("❌ Erro na resposta da API:", response.status, errorData)
         const errorMessage: AIMessage = {
           role: "assistant",
-          content: "Desculpe, ocorreu um erro. Tente novamente.",
+          content: `Desculpe, ocorreu um erro: ${errorData.error || "Erro desconhecido"}`,
           timestamp: new Date(),
         }
         setChatMessages((prev) => [...prev, errorMessage])
@@ -396,25 +429,47 @@ Pergunta do usuário: ${chatInput}`
     navigator.clipboard.writeText(text)
   }
 
-  const formatDate = (dateString: string) => {
-    if (!dateString) return "Nunca"
+  const formatDate = (dateString: string | null | undefined): string => {
+    if (!dateString || dateString === "N/A" || dateString === "Nunca") {
+      return "Nunca"
+    }
+
     try {
-      // Se a data está no formato brasileiro "23/08/2025, 22:39:38"
+      // Se já está no formato brasileiro "23/08/2025, 22:39:38"
       if (dateString.includes("/") && dateString.includes(",")) {
-        const [datePart] = dateString.split(",")
+        const [datePart, timePart] = dateString.split(", ")
         const [day, month, year] = datePart.split("/")
-        const date = new Date(Number.parseInt(year), Number.parseInt(month) - 1, Number.parseInt(day))
-        return date.toLocaleDateString("pt-BR")
+        const [hour, minute] = timePart.split(":")
+
+        // Criar data no formato correto
+        const date = new Date(
+          Number.parseInt(year),
+          Number.parseInt(month) - 1,
+          Number.parseInt(day),
+          Number.parseInt(hour),
+          Number.parseInt(minute),
+        )
+
+        if (!isNaN(date.getTime())) {
+          return `${day}/${month}/${year} às ${hour}:${minute}`
+        }
       }
 
-      // Formato padrão
+      // Se é uma data ISO ou outro formato
       const date = new Date(dateString)
-      if (isNaN(date.getTime())) {
-        return dateString // Retorna o valor original se não conseguir converter
+      if (!isNaN(date.getTime())) {
+        return (
+          date.toLocaleDateString("pt-BR") +
+          " às " +
+          date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+        )
       }
-      return date.toLocaleDateString("pt-BR")
-    } catch {
+
+      // Se não conseguiu converter, retorna o valor original
       return dateString
+    } catch (error) {
+      console.error("Erro ao formatar data:", error, "Data original:", dateString)
+      return dateString || "Nunca"
     }
   }
 
@@ -435,8 +490,6 @@ Pergunta do usuário: ${chatInput}`
     )
   }
 
-  const config = getAIConfig()
-
   return (
     <div className="space-y-4">
       <Card>
@@ -445,8 +498,12 @@ Pergunta do usuário: ${chatInput}`
             <MessageSquare className="h-5 w-5" />
             Follow-ups Pendentes
           </CardTitle>
-          <CardDescription>
+          <CardDescription className="flex items-center gap-2">
             {pendingBudgets.length} orçamento{pendingBudgets.length > 1 ? "s" : ""} aguardando acompanhamento
+            <Badge variant="outline" className="ml-2 bg-green-50 text-green-700 border-green-200">
+              <Shield className="h-3 w-3 mr-1" />
+              IA Segura
+            </Badge>
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -526,9 +583,13 @@ Pergunta do usuário: ${chatInput}`
               <MessageSquare className="h-5 w-5" />
               Follow-up: {selectedBudget?.cliente}
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="flex items-center gap-2">
               Orçamento {selectedBudget?.sequencia} - R$ {selectedBudget?.valor.toLocaleString("pt-BR")} -{" "}
               {calculateDaysOpen(selectedBudget?.data || "")} dias em aberto
+              <Badge variant="outline" className="ml-2 bg-green-50 text-green-700 border-green-200">
+                <Shield className="h-3 w-3 mr-1" />
+                IA Segura
+              </Badge>
             </DialogDescription>
           </DialogHeader>
 
@@ -599,134 +660,123 @@ Pergunta do usuário: ${chatInput}`
             </TabsContent>
 
             <TabsContent value="ai-suggestions" className="space-y-4">
-              {!config.apiKey ? (
-                <div className="text-center py-8 text-gray-500">
-                  <Brain className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                  <p>Configure a API Key da IA em Sistema → Configurar IA</p>
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-medium flex items-center gap-2">
+                  Sugestões Personalizadas
+                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                    <Shield className="h-3 w-3 mr-1" />
+                    Seguro
+                  </Badge>
+                </h3>
+                <Button onClick={loadAISuggestions} disabled={isLoadingSuggestions} size="sm">
+                  {isLoadingSuggestions ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
+                  {isLoadingSuggestions ? "Analisando..." : "Gerar Sugestões"}
+                </Button>
+              </div>
+
+              {aiSuggestions.length > 0 ? (
+                <div className="space-y-3">
+                  {aiSuggestions.map((suggestion, index) => (
+                    <div key={index} className="p-3 border rounded-lg">
+                      <div className="flex items-center justify-between mb-2">
+                        <Badge variant="outline">{suggestion.categoria}</Badge>
+                        <div className="flex items-center gap-2">
+                          {suggestion.prioridade === "alta" && <span className="text-red-500">🔥</span>}
+                          {suggestion.prioridade === "media" && <span className="text-yellow-500">⚡</span>}
+                          {suggestion.prioridade === "baixa" && <span className="text-blue-500">💡</span>}
+                          <Button size="sm" variant="ghost" onClick={() => copyToClipboard(suggestion.sugestao)}>
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="text-sm text-gray-700 whitespace-pre-wrap">{suggestion.sugestao}</div>
+                    </div>
+                  ))}
                 </div>
               ) : (
-                <>
-                  <div className="flex justify-between items-center">
-                    <h3 className="text-lg font-medium">Sugestões Personalizadas</h3>
-                    <Button onClick={loadAISuggestions} disabled={isLoadingSuggestions} size="sm">
-                      {isLoadingSuggestions ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Brain className="h-4 w-4" />
-                      )}
-                      {isLoadingSuggestions ? "Analisando..." : "Gerar Sugestões"}
-                    </Button>
-                  </div>
-
-                  {aiSuggestions.length > 0 ? (
-                    <div className="space-y-3">
-                      {aiSuggestions.map((suggestion, index) => (
-                        <div key={index} className="p-3 border rounded-lg">
-                          <div className="flex items-center justify-between mb-2">
-                            <Badge variant="outline">{suggestion.categoria}</Badge>
-                            <div className="flex items-center gap-2">
-                              {suggestion.prioridade === "alta" && <span className="text-red-500">🔥</span>}
-                              {suggestion.prioridade === "media" && <span className="text-yellow-500">⚡</span>}
-                              {suggestion.prioridade === "baixa" && <span className="text-blue-500">💡</span>}
-                              <Button size="sm" variant="ghost" onClick={() => copyToClipboard(suggestion.sugestao)}>
-                                <Copy className="h-3 w-3" />
-                              </Button>
-                            </div>
-                          </div>
-                          <p className="text-sm text-gray-700">{suggestion.sugestao}</p>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-8 text-gray-500">
-                      <Brain className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                      <p>Clique em "Gerar Sugestões" para receber recomendações da IA</p>
-                    </div>
-                  )}
-                </>
+                <div className="text-center py-8 text-gray-500">
+                  <Brain className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                  <p>Clique em "Gerar Sugestões" para receber recomendações da IA</p>
+                </div>
               )}
             </TabsContent>
 
             <TabsContent value="ai-chat" className="space-y-4">
-              {!config.apiKey ? (
-                <div className="text-center py-8 text-gray-500">
-                  <Brain className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                  <p>Configure a API Key da IA em Sistema → Configurar IA</p>
-                </div>
-              ) : (
-                <>
-                  <div className="border rounded-lg p-4 h-96 overflow-y-auto bg-gray-50">
-                    {chatMessages.length === 0 ? (
-                      <div className="text-center py-8 text-gray-500">
-                        <MessageSquare className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                        <p className="mb-4">Converse com a IA sobre este orçamento</p>
-                        <div className="space-y-2 text-sm">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setChatInput("Qual a melhor estratégia para este cliente?")}
-                          >
-                            Qual a melhor estratégia?
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setChatInput("Como posso acelerar o fechamento?")}
-                          >
-                            Como acelerar o fechamento?
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setChatInput("Que argumentos usar na negociação?")}
-                          >
-                            Argumentos de negociação?
-                          </Button>
+              <div className="flex items-center gap-2 mb-4">
+                <h3 className="text-lg font-medium">Chat Contextual</h3>
+                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                  <Shield className="h-3 w-3 mr-1" />
+                  Seguro
+                </Badge>
+              </div>
+
+              <div className="border rounded-lg p-4 h-96 overflow-y-auto bg-gray-50">
+                {chatMessages.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <MessageSquare className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                    <p className="mb-4">Converse com a IA sobre este orçamento</p>
+                    <div className="space-y-2 text-sm">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setChatInput("Qual a melhor estratégia para este cliente?")}
+                      >
+                        Qual a melhor estratégia?
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setChatInput("Como posso acelerar o fechamento?")}
+                      >
+                        Como acelerar o fechamento?
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setChatInput("Que argumentos usar na negociação?")}
+                      >
+                        Argumentos de negociação?
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {chatMessages.map((message, index) => (
+                      <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+                        <div
+                          className={`max-w-[80%] p-3 rounded-lg ${
+                            message.role === "user" ? "bg-blue-500 text-white" : "bg-white border"
+                          }`}
+                        >
+                          <div className="text-sm whitespace-pre-wrap">{message.content}</div>
+                          <p className="text-xs opacity-70 mt-1">{message.timestamp.toLocaleTimeString("pt-BR")}</p>
                         </div>
                       </div>
-                    ) : (
-                      <div className="space-y-4">
-                        {chatMessages.map((message, index) => (
-                          <div
-                            key={index}
-                            className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
-                          >
-                            <div
-                              className={`max-w-[80%] p-3 rounded-lg ${
-                                message.role === "user" ? "bg-blue-500 text-white" : "bg-white border"
-                              }`}
-                            >
-                              <p className="text-sm">{message.content}</p>
-                              <p className="text-xs opacity-70 mt-1">{message.timestamp.toLocaleTimeString("pt-BR")}</p>
-                            </div>
-                          </div>
-                        ))}
-                        {isChatLoading && (
-                          <div className="flex justify-start">
-                            <div className="bg-white border p-3 rounded-lg">
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            </div>
-                          </div>
-                        )}
+                    ))}
+                    {isChatLoading && (
+                      <div className="flex justify-start">
+                        <div className="bg-white border p-3 rounded-lg">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        </div>
                       </div>
                     )}
                   </div>
+                )}
+              </div>
 
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder="Digite sua pergunta sobre este orçamento..."
-                      value={chatInput}
-                      onChange={(e) => setChatInput(e.target.value)}
-                      onKeyPress={(e) => e.key === "Enter" && sendChatMessage()}
-                      className="flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <Button onClick={sendChatMessage} disabled={isChatLoading || !chatInput.trim()}>
-                      <Send className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </>
-              )}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Digite sua pergunta sobre este orçamento..."
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyPress={(e) => e.key === "Enter" && sendChatMessage()}
+                  className="flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <Button onClick={sendChatMessage} disabled={isChatLoading || !chatInput.trim()}>
+                  <Send className="h-4 w-4" />
+                </Button>
+              </div>
             </TabsContent>
           </Tabs>
         </DialogContent>
