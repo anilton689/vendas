@@ -2,66 +2,75 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Brain, Send, Loader2, User, Bot, AlertCircle } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Badge } from "@/components/ui/badge"
+import { Separator } from "@/components/ui/separator"
+import { Send, Bot, User, Loader2, MessageSquare, Sparkles } from "lucide-react"
+import { useAIConfig } from "@/hooks/useAIConfig"
 
 interface Message {
+  id: string
   role: "user" | "assistant"
   content: string
   timestamp: Date
 }
 
-export function AIChat() {
+interface AIChatProps {
+  budget?: any
+  onClose?: () => void
+}
+
+export function AIChat({ budget, onClose }: AIChatProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState("")
+  const scrollAreaRef = useRef<HTMLDivElement>(null)
+  const { config } = useAIConfig()
+
+  useEffect(() => {
+    // Scroll para o final quando novas mensagens chegam
+    if (scrollAreaRef.current) {
+      scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight
+    }
+  }, [messages])
 
   const sendMessage = async () => {
-    if (!input.trim()) return
+    if (!input.trim() || isLoading) return
 
     const userMessage: Message = {
+      id: Date.now().toString(),
       role: "user",
-      content: input,
+      content: input.trim(),
       timestamp: new Date(),
     }
 
     setMessages((prev) => [...prev, userMessage])
     setInput("")
     setIsLoading(true)
-    setError("")
 
     try {
-      // Buscar configuração da IA do localStorage
-      const aiConfig = JSON.parse(localStorage.getItem("ai-config") || "{}")
-
-      console.log("🤖 Configuração da IA encontrada:", {
-        hasApiKey: !!aiConfig.apiKey,
-        apiKeyStart: aiConfig.apiKey ? aiConfig.apiKey.substring(0, 7) + "..." : "não encontrada",
-        model: aiConfig.model || "não definido",
+      console.log("🤖 [AIChat] Enviando mensagem para IA:", {
+        message: input.trim(),
+        hasBudget: !!budget,
+        systemPrompt: config.systemPrompt.substring(0, 100) + "...",
+        model: config.model,
       })
-
-      if (!aiConfig.apiKey) {
-        throw new Error("API Key da IA não configurada. Configure primeiro em Sistema → Configurar IA.")
-      }
 
       const response = await fetch("/api/ai-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message: input,
-          budget: null, // Chat livre, sem contexto de orçamento
+          message: input.trim(),
+          budget: budget,
           config: {
-            apiKey: aiConfig.apiKey,
-            model: aiConfig.model || "gpt-4o-mini",
-            temperature: aiConfig.temperature || 0.7,
-            maxTokens: aiConfig.maxTokens || 1000,
-            systemPrompt:
-              aiConfig.systemPrompt ||
-              "Você é um assistente especializado em vendas e follow-up de orçamentos. Seja profissional, objetivo e útil.",
+            model: config.model,
+            temperature: config.temperature,
+            maxTokens: config.maxTokens,
+            systemPrompt: config.systemPrompt, // Usar o prompt da planilha
           },
         }),
       })
@@ -72,17 +81,27 @@ export function AIChat() {
       }
 
       const data = await response.json()
+      console.log("✅ [AIChat] Resposta recebida da IA:", data.response.substring(0, 100) + "...")
 
-      const aiMessage: Message = {
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
         role: "assistant",
         content: data.response,
         timestamp: new Date(),
       }
 
-      setMessages((prev) => [...prev, aiMessage])
+      setMessages((prev) => [...prev, assistantMessage])
     } catch (error: any) {
-      console.error("❌ Erro no chat:", error)
-      setError(error.message || "Erro ao comunicar com a IA. Verifique se a API Key está configurada.")
+      console.error("❌ [AIChat] Erro ao enviar mensagem:", error)
+
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: `❌ Erro: ${error.message}`,
+        timestamp: new Date(),
+      }
+
+      setMessages((prev) => [...prev, errorMessage])
     } finally {
       setIsLoading(false)
     }
@@ -95,102 +114,129 @@ export function AIChat() {
     }
   }
 
-  const suggestedQuestions = [
-    "Como melhorar minha taxa de fechamento?",
-    "Qual a melhor estratégia para follow-up?",
-    "Como lidar com objeções de preço?",
-    "Dicas para acelerar o processo de vendas",
-  ]
-
   return (
-    <div className="space-y-4">
-      {/* Chat Messages */}
-      <div className="border rounded-lg p-4 h-96 overflow-y-auto bg-gray-50">
-        {messages.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">
-            <Brain className="h-12 w-12 mx-auto mb-3 opacity-50" />
-            <p className="mb-4">Olá! Sou sua IA de vendas. Como posso ajudar?</p>
-            <div className="space-y-2">
-              {suggestedQuestions.map((question, index) => (
-                <Button
-                  key={index}
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setInput(question)}
-                  className="block mx-auto"
-                >
-                  {question}
-                </Button>
-              ))}
-            </div>
+    <Card className="h-[600px] flex flex-col">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <Bot className="h-5 w-5" />
+            Chat com IA
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="flex items-center gap-1">
+              <Sparkles className="h-3 w-3" />
+              {config.model}
+            </Badge>
+            {budget && (
+              <Badge variant="outline" className="flex items-center gap-1">
+                <MessageSquare className="h-3 w-3" />
+                Com Contexto
+              </Badge>
+            )}
           </div>
-        ) : (
-          <div className="space-y-4">
-            {messages.map((message, index) => (
-              <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+        </div>
+        {budget && (
+          <div className="text-sm text-muted-foreground">
+            Conversando sobre: <strong>{budget.nome_cliente}</strong> - R${" "}
+            {budget.valor_orcamento?.toLocaleString("pt-BR")}
+          </div>
+        )}
+      </CardHeader>
+
+      <Separator />
+
+      <CardContent className="flex-1 flex flex-col p-0">
+        <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
+          {messages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-center space-y-3">
+              <Bot className="h-12 w-12 text-muted-foreground" />
+              <div>
+                <h3 className="font-medium">Olá! Como posso ajudar?</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {budget
+                    ? "Faça perguntas sobre este orçamento ou peça sugestões de follow-up."
+                    : "Faça perguntas sobre vendas, estratégias ou análise de orçamentos."}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {messages.map((message) => (
                 <div
-                  className={`max-w-[80%] p-3 rounded-lg ${
-                    message.role === "user" ? "bg-blue-500 text-white" : "bg-white border shadow-sm"
-                  }`}
+                  key={message.id}
+                  className={`flex gap-3 ${message.role === "user" ? "justify-end" : "justify-start"}`}
                 >
-                  <div className="flex items-start gap-2 mb-2">
-                    {message.role === "user" ? (
-                      <User className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                    ) : (
-                      <Bot className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                    )}
-                    <div className="flex-1">
-                      <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                      <p className={`text-xs mt-1 ${message.role === "user" ? "text-blue-100" : "text-gray-500"}`}>
-                        {message.timestamp.toLocaleTimeString("pt-BR")}
-                      </p>
+                  {message.role === "assistant" && (
+                    <div className="flex-shrink-0">
+                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                        <Bot className="h-4 w-4 text-primary" />
+                      </div>
+                    </div>
+                  )}
+                  <div
+                    className={`max-w-[80%] rounded-lg px-3 py-2 ${
+                      message.role === "user"
+                        ? "bg-primary text-primary-foreground ml-auto"
+                        : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    <div className="text-sm whitespace-pre-wrap">{message.content}</div>
+                    <div className="text-xs opacity-70 mt-1">
+                      {message.timestamp.toLocaleTimeString("pt-BR", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </div>
+                  </div>
+                  {message.role === "user" && (
+                    <div className="flex-shrink-0">
+                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                        <User className="h-4 w-4 text-primary" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+              {isLoading && (
+                <div className="flex gap-3 justify-start">
+                  <div className="flex-shrink-0">
+                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                      <Bot className="h-4 w-4 text-primary" />
+                    </div>
+                  </div>
+                  <div className="bg-muted text-muted-foreground rounded-lg px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span className="text-sm">Pensando...</span>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
-            {isLoading && (
-              <div className="flex justify-start">
-                <div className="bg-white border shadow-sm p-3 rounded-lg">
-                  <div className="flex items-center gap-2">
-                    <Bot className="h-4 w-4" />
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span className="text-sm text-gray-500">Pensando...</span>
-                  </div>
-                </div>
-              </div>
-            )}
+              )}
+            </div>
+          )}
+        </ScrollArea>
+
+        <Separator />
+
+        <div className="p-4">
+          <div className="flex gap-2">
+            <Input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyPress={handleKeyPress}
+              placeholder="Digite sua mensagem..."
+              disabled={isLoading}
+              className="flex-1"
+            />
+            <Button onClick={sendMessage} disabled={isLoading || !input.trim()} size="icon">
+              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            </Button>
           </div>
-        )}
-      </div>
-
-      {/* Error Alert */}
-      {error && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
-      {/* Input */}
-      <div className="flex gap-2">
-        <Textarea
-          placeholder="Digite sua pergunta sobre vendas, estratégias, follow-ups..."
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyPress={handleKeyPress}
-          rows={2}
-          className="flex-1 resize-none"
-          disabled={isLoading}
-        />
-        <Button onClick={sendMessage} disabled={isLoading || !input.trim()} className="self-end">
-          {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-        </Button>
-      </div>
-
-      <div className="text-xs text-gray-500 text-center">
-        💡 Dica: Pressione Enter para enviar, Shift+Enter para nova linha
-      </div>
-    </div>
+          <div className="text-xs text-muted-foreground mt-2">
+            Pressione Enter para enviar • Shift+Enter para nova linha
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   )
 }

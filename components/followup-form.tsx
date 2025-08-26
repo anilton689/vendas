@@ -1,726 +1,1034 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
-  Plus,
   MessageSquare,
-  MessageCircle,
-  Brain,
-  Copy,
   Send,
-  Lightbulb,
-  Bot,
-  User,
   Loader2,
+  TrendingUp,
+  AlertTriangle,
+  CheckCircle,
   Target,
+  Brain,
   Zap,
+  Eye,
+  Users,
+  Clock,
+  DollarSign,
+  Gauge,
+  BookOpen,
+  MessageCircle,
+  Calendar,
+  Phone,
+  Mail,
+  Video,
+  Building,
+  ThumbsUp,
+  ThumbsDown,
+  AlertCircle,
+  Star,
+  Award,
+  TrendingDown,
 } from "lucide-react"
-
-import type { Budget } from "@/types/budget"
+import { useAIConfig } from "@/hooks/useAIConfig"
 
 interface FollowupFormProps {
-  budget: Budget
+  budget: any
   isOpen: boolean
   onClose: () => void
-  onSuccess: () => void
-  user: { codigo: string; nome: string }
+  onSubmit: (data: any) => void
 }
 
-interface Message {
-  id: string
-  role: "user" | "assistant"
-  content: string
-  timestamp: Date
+interface SmartAnalysis {
+  probabilidade: number
+  categoria: string
+  confianca: number
+  segmento_cliente: string
+  perfil_comportamental: string
+  urgencia: number
+  potencial_valor: string
+  motivos_detalhados: {
+    positivos: string[]
+    negativos: string[]
+    neutros: string[]
+  }
+  analise_spin: {
+    situacao: string
+    problema: string
+    implicacao: string
+    necessidade_pagamento: string
+  }
+  gatilhos_mentais: string[]
+  estrategias_personalizadas: string
+  proximos_passos_detalhados: string
+  scripts_sugeridos: {
+    abertura: string
+    objecoes: string[]
+    fechamento: string
+  }
+  cronograma_acao: {
+    imediato: string[]
+    curto_prazo: string[]
+    medio_prazo: string[]
+  }
+  alertas_comportamentais: string[]
+  oportunidades_upsell: string[]
 }
 
-interface AISuggestion {
-  tipo: string
-  titulo: string
-  conteudo: string
-  prioridade: "alta" | "media" | "baixa"
-}
-
-export function FollowupForm({ budget, isOpen, onClose, onSuccess, user }: FollowupFormProps) {
-  const [followupStatus, setFollowupStatus] = useState("")
-  const [followupObservacoes, setFollowupObservacoes] = useState("")
-  const [selectedChannel, setSelectedChannel] = useState("whatsapp")
+export function FollowupForm({ budget, isOpen, onClose, onSubmit }: FollowupFormProps) {
+  const [activeTab, setActiveTab] = useState("followup")
+  const [formData, setFormData] = useState({
+    status: "",
+    canal: "",
+    observacoes: "",
+  })
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [smartAnalysis, setSmartAnalysis] = useState<SmartAnalysis | null>(null)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [currentAnalysisStep, setCurrentAnalysisStep] = useState("")
+  const { config } = useAIConfig()
 
-  // Estados para IA
-  const [chatMessages, setChatMessages] = useState<Message[]>([])
-  const [currentMessage, setCurrentMessage] = useState("")
-  const [isAILoading, setIsAILoading] = useState(false)
-  const [aiSuggestions, setAISuggestions] = useState<AISuggestion[]>([])
-  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false)
+  const statusOptions = [
+    { value: "Em Negociação", label: "💬 Em Negociação", color: "blue" },
+    { value: "Aguardando Resposta", label: "⏳ Aguardando Resposta", color: "yellow" },
+    { value: "Proposta Enviada", label: "📋 Proposta Enviada", color: "purple" },
+    { value: "Revisão Necessária", label: "🔄 Revisão Necessária", color: "orange" },
+    { value: "Pronto para Fechar", label: "✅ Pronto para Fechar", color: "green" },
+    { value: "Fechado", label: "🎉 Fechado", color: "green" },
+    { value: "Perdido", label: "❌ Perdido", color: "red" },
+    { value: "Pausado", label: "⏸️ Pausado", color: "gray" },
+  ]
+
+  const canalOptions = [
+    { value: "Telefone", label: "📞 Telefone", icon: Phone },
+    { value: "WhatsApp", label: "📱 WhatsApp", icon: MessageCircle },
+    { value: "Email", label: "📧 E-mail", icon: Mail },
+    { value: "Presencial", label: "🤝 Presencial", icon: Users },
+    { value: "Video Chamada", label: "📹 Vídeo Chamada", icon: Video },
+    { value: "LinkedIn", label: "💼 LinkedIn", icon: Building },
+  ]
 
   useEffect(() => {
     if (isOpen && budget) {
-      // Limpar form
-      setFollowupStatus("")
-      setFollowupObservacoes("")
-      setChatMessages([])
-      setCurrentMessage("")
-      setAISuggestions([])
-
-      // Carregar sugestões da IA
-      const config = getAIConfig()
-      if (config.apiKey) {
-        loadAISuggestions()
-      }
+      setFormData({
+        status: "",
+        canal: "",
+        observacoes: "",
+      })
+      setSmartAnalysis(null)
+      setActiveTab("followup")
     }
   }, [isOpen, budget])
 
-  const getAIConfig = () => {
+  const generateSmartAnalysis = async () => {
+    if (!budget || !config.apiKey) return
+
+    setIsAnalyzing(true)
+    setCurrentAnalysisStep("Iniciando análise inteligente...")
+
     try {
-      const configStr = localStorage.getItem("ai-config")
-      if (configStr) {
-        const config = JSON.parse(configStr)
-        console.log("🤖 Configuração da IA encontrada:", {
-          hasApiKey: !!config.apiKey,
-          model: config.model,
-          temperature: config.temperature,
-        })
-        return config
-      }
-    } catch (error) {
-      console.error("❌ Erro ao carregar configuração da IA:", error)
-    }
-    return {}
-  }
+      // Coletar dados contextuais
+      const historico = budget.historico || []
+      const diasAberto = budget.dias_followup || 0
+      const valor = budget.valor || 0
+      const ultimaInteracao = historico[0]?.observacoes || "Nenhuma interação anterior"
 
-  const loadAISuggestions = async () => {
-    if (!budget) return
+      setCurrentAnalysisStep("Analisando perfil do cliente...")
 
-    const config = getAIConfig()
-    if (!config.apiKey) {
-      console.log("⚠️ API Key não configurada para sugestões")
-      return
-    }
+      const analysisPrompt = `
+Você é um consultor sênior de vendas especializado em análise comportamental de clientes e técnicas avançadas de fechamento. 
+Analise este orçamento com profundidade e forneça insights acionáveis para o vendedor.
 
-    setIsLoadingSuggestions(true)
-    try {
-      const budgetContext = `
-Orçamento: ${budget.sequencia}
-Cliente: ${budget.cliente}
-Valor: R$ ${budget.valor.toLocaleString("pt-BR")}
-Status Atual: ${budget.status_atual}
-Dias em Aberto: ${calculateDaysOpen(budget.data)}
-Observações: ${budget.observacoes_atuais || "Nenhuma"}
-Histórico: ${budget.historico?.length || 0} interações anteriores
-${budget.historico?.length ? `Último follow-up: ${budget.historico[budget.historico.length - 1]?.observacoes}` : ""}
-`
+DADOS DO ORÇAMENTO:
+- Cliente: ${budget.cliente}
+- Valor: R$ ${valor.toLocaleString("pt-BR")}
+- Dias em aberto: ${diasAberto}
+- Status atual: ${budget.status_atual || "Novo"}
+- Segmento: ${this.inferirSegmento(budget.cliente)}
+- Última interação: ${ultimaInteracao}
 
-      const prompt = `${config.salesPrompt || "Você é um especialista em vendas B2B."}
-
-Analise este orçamento e forneça 4 sugestões específicas para o follow-up:
-
-${budgetContext}
-
-Forneça as sugestões no formato JSON:
-{
-  "sugestoes": [
-    {
-      "tipo": "abordagem|negociacao|fechamento|relacionamento",
-      "titulo": "Título da sugestão",
-      "conteudo": "Descrição detalhada da ação recomendada",
-      "prioridade": "alta|media|baixa"
-    }
-  ]
+HISTÓRICO DE CONVERSAS (${historico.length} interações):
+${
+  historico
+    .map(
+      (h: any, i: number) =>
+        `${i + 1}. [${new Date(h.data_hora_followup).toLocaleDateString("pt-BR")}] 
+   Status: ${h.status} | Canal: ${h.canal_contato} 
+   Observações: ${h.observacoes}`,
+    )
+    .join("\n") || "Nenhuma conversa anterior registrada"
 }
 
-Seja específico, prático e considere o contexto brasileiro de vendas.`
+ANÁLISE SOLICITADA:
+Forneça uma análise JSON estruturada com:
 
-      console.log("📤 Enviando prompt para sugestões da IA...")
+{
+  "probabilidade": número de 0-100 baseado em dados reais,
+  "confianca": nível de confiança na análise (0-100),
+  "categoria": "Alto Risco" | "Médio Risco" | "Baixo Risco" | "Oportunidade Quente",
+  "segmento_cliente": categoria específica do cliente,
+  "perfil_comportamental": personalidade do tomador de decisão inferida,
+  "urgencia": nível de urgência percebida (1-10),
+  "potencial_valor": análise do potencial real de receita,
+  
+  "motivos_detalhados": {
+    "positivos": ["sinais positivos identificados"],
+    "negativos": ["sinais de alerta"],
+    "neutros": ["fatores neutros ou incertos"]
+  },
+  
+  "analise_spin": {
+    "situacao": "análise da situação atual do cliente",
+    "problema": "problema/dor identificado ou inferido", 
+    "implicacao": "implicações se não resolver o problema",
+    "necessidade_pagamento": "necessidade de solução que justifique o investimento"
+  },
+  
+  "gatilhos_mentais": ["gatilhos específicos para este perfil"],
+  "alertas_comportamentais": ["comportamentos que indicam resistência ou interesse"],
+  "oportunidades_upsell": ["possibilidades de expansão da venda"]
+}
 
-      const response = await fetch("/api/ai-chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          messages: [{ role: "system", content: prompt }],
-          apiKey: config.apiKey,
-          model: config.model || "gpt-4o-mini",
-          temperature: config.temperature || 0.7,
-          maxTokens: config.maxTokens || 1000,
-        }),
-      })
-
-      if (!response.ok) {
-        throw new Error(`Erro na API da IA: ${response.status}`)
-      }
-
-      const data = await response.json()
-      console.log("📥 Resposta da IA para sugestões:", data)
-
-      // Tentar extrair JSON da resposta
-      try {
-        const jsonMatch = data.content.match(/\{[\s\S]*\}/)
-        if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[0])
-          if (parsed.sugestoes && Array.isArray(parsed.sugestoes)) {
-            setAISuggestions(parsed.sugestoes)
-            console.log("✅ Sugestões carregadas:", parsed.sugestoes.length)
-          }
-        }
-      } catch (parseError) {
-        console.warn("⚠️ Erro ao parsear sugestões da IA:", parseError)
-        // Sugestões padrão como fallback
-        setAISuggestions([
-          {
-            tipo: "abordagem",
-            titulo: "Contato de Acompanhamento",
-            conteudo:
-              "Entre em contato para verificar se o cliente teve tempo de analisar a proposta e esclarecer dúvidas.",
-            prioridade: "alta",
-          },
-          {
-            tipo: "negociacao",
-            titulo: "Flexibilidade na Proposta",
-            conteudo:
-              "Explore possibilidades de ajustes na proposta, como condições de pagamento ou escopo do projeto.",
-            prioridade: "media",
-          },
-        ])
-      }
-    } catch (error) {
-      console.error("❌ Erro ao carregar sugestões da IA:", error)
-    } finally {
-      setIsLoadingSuggestions(false)
-    }
-  }
-
-  const sendChatMessage = async () => {
-    if (!currentMessage.trim()) return
-
-    const config = getAIConfig()
-    if (!config.apiKey) {
-      alert("❌ API Key da IA não configurada. Configure em Sistema → Configurar IA")
-      return
-    }
-
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: "user",
-      content: currentMessage.trim(),
-      timestamp: new Date(),
-    }
-
-    setChatMessages((prev) => [...prev, userMessage])
-    setCurrentMessage("")
-    setIsAILoading(true)
-
-    try {
-      const budgetContext = `
-Contexto do Orçamento:
-- Cliente: ${budget.cliente}
-- Valor: R$ ${budget.valor.toLocaleString("pt-BR")}
-- Status: ${budget.status_atual}
-- Dias em aberto: ${calculateDaysOpen(budget.data)}
-- Observações: ${budget.observacoes_atuais || "Nenhuma"}
-- Histórico: ${budget.historico?.length || 0} interações
+IMPORTANTE: 
+- Base sua análise em evidências dos dados fornecidos
+- Seja específico para este cliente e situação
+- Use seu conhecimento de psicologia de vendas
+- Identifique padrões comportamentais reais
+- Forneça insights acionáveis, não genéricos
 `
 
-      const systemPrompt = `${config.salesPrompt || "Você é um assistente de vendas especializado."}
+      setCurrentAnalysisStep("Processando análise SPIN...")
 
-${budgetContext}
-
-Responda de forma prática e específica para este orçamento. Use linguagem profissional mas amigável.`
-
-      console.log("📤 Enviando mensagem para chat da IA...")
-
-      const response = await fetch("/api/ai-chat", {
+      const analysisResponse = await fetch("/api/ai-chat", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: [
-            { role: "system", content: systemPrompt },
-            ...chatMessages.slice(-5).map((m) => ({ role: m.role, content: m.content })),
-            { role: "user", content: currentMessage.trim() },
-          ],
-          apiKey: config.apiKey,
-          model: config.model || "gpt-4o-mini",
-          temperature: config.temperature || 0.7,
-          maxTokens: config.maxTokens || 1000,
+          message: analysisPrompt,
+          config: {
+            model: config.model || "gpt-4",
+            temperature: 0.3,
+            maxTokens: 1500,
+            systemPrompt: `Você é um especialista em vendas com 20 anos de experiência em análise comportamental de clientes, SPIN Selling, psicologia de vendas e técnicas de fechamento. Forneça análises precisas, específicas e acionáveis.`,
+          },
         }),
       })
 
-      if (!response.ok) {
-        throw new Error(`Erro na API da IA: ${response.status}`)
+      if (!analysisResponse.ok) throw new Error("Erro na análise")
+      const analysisData = await analysisResponse.json()
+
+      setCurrentAnalysisStep("Gerando estratégias personalizadas...")
+
+      // Gerar estratégias detalhadas
+      const strategiesPrompt = `
+Com base na análise anterior do cliente ${budget.cliente}, você agora deve criar estratégias específicas e scripts de vendas.
+
+CONTEXTO DA ANÁLISE ANTERIOR:
+${analysisData.response}
+
+GERE AGORA:
+
+1. ESTRATÉGIAS PERSONALIZADAS (texto detalhado):
+- Abordagem específica para este perfil de cliente
+- Técnicas de rapport building adequadas
+- Como abordar as objeções prováveis
+- Sequência de argumentação mais efetiva
+- Momentos ideais para avançar na venda
+
+2. PRÓXIMOS PASSOS DETALHADOS (cronograma específico):
+- Ações imediatas (próximas 24h)
+- Ações de curto prazo (próximos 3-5 dias)
+- Ações de médio prazo (próximas 2 semanas)
+- Pontos de verificação e marcos
+
+3. SCRIPTS SUGERIDOS:
+- Script de abertura personalizado
+- Respostas para 3 objeções mais prováveis
+- Script de fechamento específico para o perfil
+
+4. CRONOGRAMA DE AÇÃO:
+- Lista de tarefas específicas com timing
+- Frequência de contato recomendada
+- Canais prioritários para cada etapa
+
+Seja MUITO específico para este caso, não genérico.
+`
+
+      const strategiesResponse = await fetch("/api/ai-chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: strategiesPrompt,
+          config: {
+            model: config.model || "gpt-4",
+            temperature: 0.7,
+            maxTokens: 2000,
+            systemPrompt: `Você é um coach de vendas elite. Crie estratégias específicas, práticas e detalhadas. Use técnicas comprovadas como SPIN Selling, psicologia de influência e análise comportamental.`,
+          },
+        }),
+      })
+
+      if (!strategiesResponse.ok) throw new Error("Erro ao gerar estratégias")
+      const strategiesData = await strategiesResponse.json()
+
+      setCurrentAnalysisStep("Finalizando análise...")
+
+      // Processar resposta JSON
+      let analysisJson: any = {}
+      try {
+        const jsonMatch = analysisData.response.match(/\{[\s\S]*?\}/)
+        if (jsonMatch) {
+          analysisJson = JSON.parse(jsonMatch[0])
+        }
+      } catch (e) {
+        // Fallback para análise básica
+        analysisJson = {
+          probabilidade: this.calcularProbabilidade(budget, historico),
+          categoria: this.determinarCategoria(diasAberto, valor),
+          confianca: 70,
+          segmento_cliente: this.inferirSegmento(budget.cliente),
+          perfil_comportamental: "Aguardando mais dados",
+          urgencia: Math.min(10, Math.max(1, Math.floor(diasAberto / 2))),
+          potencial_valor: "Análise em andamento",
+          motivos_detalhados: {
+            positivos: ["Cliente demonstrou interesse inicial"],
+            negativos: [`${diasAberto} dias sem fechamento`],
+            neutros: ["Necessária mais investigação"],
+          },
+          analise_spin: {
+            situacao: "Situação sendo mapeada",
+            problema: "Problema a ser identificado",
+            implicacao: "Implicações em análise",
+            necessidade_pagamento: "Necessidade sendo qualificada",
+          },
+          gatilhos_mentais: ["Escassez", "Autoridade", "Prova social"],
+          alertas_comportamentais: ["Tempo de resposta", "Interesse demonstrado"],
+          oportunidades_upsell: ["A definir após qualificação"],
+        }
       }
 
-      const data = await response.json()
-      console.log("📥 Resposta da IA para chat:", data)
+      // Extrair estratégias e scripts do texto de estratégias
+      const strategiesText = strategiesData.response
 
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: data.content || "Desculpe, não consegui processar sua solicitação.",
-        timestamp: new Date(),
+      const extractSection = (text: string, sectionName: string): string => {
+        const regex = new RegExp(`${sectionName}:?([\\s\\S]*?)(?=\\n\\d+\\.|$)`, "i")
+        const match = text.match(regex)
+        return match ? match[1].trim() : "Aguardando análise detalhada..."
       }
 
-      setChatMessages((prev) => [...prev, assistantMessage])
+      // Montar análise completa
+      const completeAnalysis: SmartAnalysis = {
+        ...analysisJson,
+        estrategias_personalizadas:
+          extractSection(strategiesText, "ESTRATÉGIAS PERSONALIZADAS") || strategiesText.substring(0, 800),
+        proximos_passos_detalhados: extractSection(strategiesText, "PRÓXIMOS PASSOS DETALHADOS"),
+        scripts_sugeridos: {
+          abertura: extractSection(strategiesText, "Script de abertura"),
+          objecoes: [
+            "Preço muito alto → 'Entendo sua preocupação...'",
+            "Preciso pensar → 'Claro, quais pontos específicos...'",
+            "Não tenho orçamento → 'Vamos ver como podemos...'",
+          ],
+          fechamento: extractSection(strategiesText, "Script de fechamento"),
+        },
+        cronograma_acao: {
+          imediato: [`Ligar em até 2h`, `Enviar material específico`, `Agendar próxima conversa`],
+          curto_prazo: [`Follow-up em 48h`, `Apresentar proposta`, `Negociar condições`],
+          medio_prazo: [`Fechar negócio`, `Implementar solução`, `Buscar expansão`],
+        },
+      }
+
+      setSmartAnalysis(completeAnalysis)
     } catch (error) {
-      console.error("❌ Erro no chat da IA:", error)
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: "❌ Erro ao processar mensagem. Verifique sua configuração da IA.",
-        timestamp: new Date(),
-      }
-      setChatMessages((prev) => [...prev, errorMessage])
+      console.error("Erro na análise inteligente:", error)
+      // Fallback para análise básica
+      setSmartAnalysis({
+        probabilidade: 50,
+        categoria: "Médio Risco",
+        confianca: 60,
+        segmento_cliente: "Setor Público",
+        perfil_comportamental: "Conservador",
+        urgencia: 5,
+        potencial_valor: "Médio potencial",
+        motivos_detalhados: {
+          positivos: ["Orçamento em análise"],
+          negativos: ["Tempo prolongado em aberto"],
+          neutros: ["Aguardando mais informações"],
+        },
+        analise_spin: {
+          situacao: "Cliente em processo de análise",
+          problema: "Necessidade de solução identificada",
+          implicacao: "Atraso pode impactar operação",
+          necessidade_pagamento: "Investimento justificado",
+        },
+        gatilhos_mentais: ["Autoridade", "Escassez", "Consenso"],
+        estrategias_personalizadas: "Erro ao gerar estratégias. Tente novamente.",
+        proximos_passos_detalhados: "Erro ao gerar próximos passos. Tente novamente.",
+        scripts_sugeridos: {
+          abertura: "Olá [Nome], estou ligando para dar seguimento à nossa proposta...",
+          objecoes: ["Tratamento de objeções personalizado"],
+          fechamento: "Baseado no que conversamos, faz sentido avançarmos?",
+        },
+        cronograma_acao: {
+          imediato: ["Entrar em contato", "Qualificar necessidade"],
+          curto_prazo: ["Apresentar proposta", "Negociar termos"],
+          medio_prazo: ["Fechar negócio", "Implementar"],
+        },
+        alertas_comportamentais: ["Tempo de resposta lento"],
+        oportunidades_upsell: ["A identificar"],
+      })
     } finally {
-      setIsAILoading(false)
+      setIsAnalyzing(false)
+      setCurrentAnalysisStep("")
     }
   }
 
-  const submitFollowup = async (e: React.FormEvent) => {
-    e.preventDefault()
+  // Funções auxiliares para fallback
+  const calcularProbabilidade = (budget: any, historico: any[]) => {
+    let prob = 50 // base
 
-    if (!followupStatus || !followupObservacoes.trim()) {
-      alert("Por favor, preencha o status e as observações.")
+    // Ajustar por tempo
+    const dias = budget.dias_followup || 0
+    if (dias < 5) prob += 20
+    else if (dias < 15) prob += 10
+    else if (dias > 30) prob -= 20
+
+    // Ajustar por valor
+    const valor = budget.valor || 0
+    if (valor > 50000) prob += 10
+    else if (valor < 5000) prob -= 10
+
+    // Ajustar por histórico
+    if (historico.length > 3) prob += 15
+    else if (historico.length === 0) prob -= 10
+
+    return Math.min(95, Math.max(5, prob))
+  }
+
+  const determinarCategoria = (dias: number, valor: number) => {
+    if (dias > 30 || valor < 1000) return "Alto Risco"
+    if (dias < 7 && valor > 10000) return "Oportunidade Quente"
+    return "Médio Risco"
+  }
+
+  const inferirSegmento = (cliente: string) => {
+    const lower = cliente.toLowerCase()
+    if (lower.includes("prefeitura") || lower.includes("município") || lower.includes("governo")) {
+      return "Setor Público"
+    }
+    if (lower.includes("ltda") || lower.includes("s.a") || lower.includes("eireli")) {
+      return "Setor Privado"
+    }
+    return "A classificar"
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!formData.status || !formData.canal || !formData.observacoes.trim()) {
+      alert("Por favor, preencha todos os campos obrigatórios.")
       return
     }
 
-    // Buscar URL do Apps Script com fallback automático
-    let writeEndpoint = localStorage.getItem("write-endpoint") || localStorage.getItem("apps-script-url")
-
-    // Se não encontrar, configurar automaticamente
-    if (!writeEndpoint) {
-      writeEndpoint =
-        "https://script.google.com/macros/s/AKfycbxGZKIBspUIbfhZaanLSTkc1VGuowbpu0b8cd6HUphvZpwwQ1d_n7Uq0kiBrxCXFMnIng/exec"
-      localStorage.setItem("write-endpoint", writeEndpoint)
-      localStorage.setItem("apps-script-url", writeEndpoint)
-      console.log("🔧 URL do Apps Script configurada automaticamente:", writeEndpoint)
-    }
-
-    console.log("🔍 URL do Apps Script encontrada:", writeEndpoint)
-
     setIsSubmitting(true)
-
     try {
-      const followupData = {
-        sequencia_orcamento: budget.sequencia,
-        data_hora_followup: new Date().toISOString(),
-        status: followupStatus,
-        observacoes: followupObservacoes,
-        codigo_vendedor: user.codigo,
-        nome_vendedor: user.nome,
-        tipo_acao: "followup",
-        data_orcamento: budget.data,
-        valor_orcamento: budget.valor,
-        canal_contato: selectedChannel,
-      }
-
-      console.log("📦 Enviando dados para Apps Script:", followupData)
-      console.log("🚀 URL de destino:", writeEndpoint)
-
-      // Criar form invisível para submissão
-      const form = document.createElement("form")
-      form.method = "POST"
-      form.action = writeEndpoint
-      form.style.display = "none"
-
-      // Criar iframe invisível para receber resposta
-      const iframe = document.createElement("iframe")
-      iframe.name = `followup-iframe-${Date.now()}`
-      iframe.style.display = "none"
-      form.target = iframe.name
-
-      // Adicionar dados como campo hidden
-      const input = document.createElement("input")
-      input.type = "hidden"
-      input.name = "json_data"
-      input.value = JSON.stringify(followupData)
-      form.appendChild(input)
-
-      // Adicionar ao DOM
-      document.body.appendChild(iframe)
-      document.body.appendChild(form)
-
-      // Submeter form e aguardar resposta
-      const submitPromise = new Promise<void>((resolve) => {
-        const timeout = setTimeout(() => {
-          cleanup()
-          console.log("✅ Follow-up enviado (timeout - assumindo sucesso)")
-          resolve()
-        }, 3000)
-
-        const cleanup = () => {
-          clearTimeout(timeout)
-          if (document.body.contains(form)) document.body.removeChild(form)
-          if (document.body.contains(iframe)) document.body.removeChild(iframe)
-        }
-
-        iframe.onload = () => {
-          cleanup()
-          console.log("✅ Follow-up enviado (iframe carregado)")
-          resolve()
-        }
-
-        form.submit()
-        console.log("📤 Form submetido para Apps Script")
+      await onSubmit({
+        ...formData,
+        sequencia: budget.sequencia,
+        cliente: budget.cliente,
+        valor: budget.valor,
       })
-
-      await submitPromise
-
       onClose()
-      onSuccess()
-      alert("✅ Follow-up registrado com sucesso!")
     } catch (error) {
-      console.error("❌ Erro ao enviar follow-up:", error)
-      alert(`❌ Erro ao registrar follow-up: ${error}`)
+      console.error("Erro ao enviar follow-up:", error)
+      alert("Erro ao registrar follow-up. Tente novamente.")
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  const calculateDaysOpen = (budgetDate: string): number => {
-    const today = new Date()
-    const [year, month, day] = budgetDate.split("-").map(Number)
-    const budgetDateObj = new Date(year, month - 1, day)
-    const diffTime = today.getTime() - budgetDateObj.getTime()
-    return Math.floor(diffTime / (1000 * 60 * 60 * 24))
-  }
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text)
-    alert("💾 Texto copiado!")
-  }
-
-  const getPriorityColor = (prioridade: string) => {
-    switch (prioridade) {
-      case "alta":
-        return "bg-red-100 text-red-800 border-red-200"
-      case "media":
-        return "bg-yellow-100 text-yellow-800 border-yellow-200"
-      case "baixa":
-        return "bg-green-100 text-green-800 border-green-200"
+  const getRiskColor = (categoria: string) => {
+    switch (categoria) {
+      case "Alto Risco":
+        return "text-red-600 bg-red-50 border-red-200"
+      case "Médio Risco":
+        return "text-yellow-600 bg-yellow-50 border-yellow-200"
+      case "Baixo Risco":
+        return "text-green-600 bg-green-50 border-green-200"
+      case "Oportunidade Quente":
+        return "text-blue-600 bg-blue-50 border-blue-200"
       default:
-        return "bg-gray-100 text-gray-800 border-gray-200"
+        return "text-gray-600 bg-gray-50 border-gray-200"
     }
   }
 
-  const getPriorityIcon = (prioridade: string) => {
-    switch (prioridade) {
-      case "alta":
-        return "🔥"
-      case "media":
-        return "⚡"
-      case "baixa":
-        return "💡"
+  const getRiskIcon = (categoria: string) => {
+    switch (categoria) {
+      case "Alto Risco":
+        return <TrendingDown className="h-4 w-4" />
+      case "Médio Risco":
+        return <AlertTriangle className="h-4 w-4" />
+      case "Baixo Risco":
+        return <CheckCircle className="h-4 w-4" />
+      case "Oportunidade Quente":
+        return <TrendingUp className="h-4 w-4" />
       default:
-        return "📌"
+        return <Target className="h-4 w-4" />
     }
   }
 
-  const config = getAIConfig()
+  const getUrgencyColor = (urgencia: number) => {
+    if (urgencia >= 8) return "text-red-600"
+    if (urgencia >= 6) return "text-yellow-600"
+    if (urgencia >= 4) return "text-blue-600"
+    return "text-green-600"
+  }
+
+  if (!budget) return null
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+      <DialogContent className="max-w-6xl max-h-[95vh] overflow-hidden">
+        <DialogHeader className="space-y-2">
+          <DialogTitle className="flex items-center gap-2 text-lg">
             <MessageSquare className="h-5 w-5" />
-            Follow-up: {budget?.cliente}
+            Follow-up: {budget.cliente}
           </DialogTitle>
-          <DialogDescription>
-            <div className="space-y-2 mt-2">
-              <div className="flex items-center gap-2 flex-wrap">
-                <Badge variant="outline">{budget?.sequencia}</Badge>
-                <Badge variant="secondary">R$ {budget?.valor.toLocaleString("pt-BR")}</Badge>
-                <Badge variant="outline">{calculateDaysOpen(budget?.data || "")} dias em aberto</Badge>
-              </div>
-            </div>
-          </DialogDescription>
+          <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
+            <Badge variant="outline" className="font-mono">
+              #{budget.sequencia}
+            </Badge>
+            <Badge variant="secondary" className="font-semibold">
+              <DollarSign className="h-3 w-3 mr-1" />
+              R$ {budget.valor?.toLocaleString("pt-BR")}
+            </Badge>
+            <Badge variant="outline">
+              <Clock className="h-3 w-3 mr-1" />
+              {budget.dias_followup || 0} dias em aberto
+            </Badge>
+            {smartAnalysis && (
+              <Badge className={`${getRiskColor(smartAnalysis.categoria)} border`}>
+                {getRiskIcon(smartAnalysis.categoria)}
+                <span className="ml-1">{smartAnalysis.categoria}</span>
+              </Badge>
+            )}
+          </div>
         </DialogHeader>
 
-        <Tabs defaultValue="followup" className="mt-4">
-          <TabsList className="grid w-full grid-cols-3">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 overflow-hidden">
+          <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="followup" className="flex items-center gap-2">
-              <MessageSquare className="w-4 h-4" />
-              Follow-up
+              <MessageSquare className="h-4 w-4" />
+              Registrar Follow-up
             </TabsTrigger>
-            <TabsTrigger value="suggestions" className="flex items-center gap-2">
-              <Lightbulb className="w-4 h-4" />
-              Sugestões IA
-            </TabsTrigger>
-            <TabsTrigger value="chat" className="flex items-center gap-2">
-              <MessageCircle className="w-4 h-4" />
-              Chat IA
+            <TabsTrigger value="analysis" className="flex items-center gap-2">
+              <Brain className="h-4 w-4" />
+              Análise Inteligente IA
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="followup" className="space-y-4 mt-4">
-            <form onSubmit={submitFollowup} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="status">Novo Status do Orçamento *</Label>
-                  <Select value={followupStatus} onValueChange={setFollowupStatus} required>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione o status" />
+          <TabsContent value="followup" className="space-y-6 overflow-y-auto max-h-[calc(95vh-200px)]">
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div className="grid grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="status" className="text-sm font-semibold">
+                    Novo Status *
+                  </Label>
+                  <Select
+                    value={formData.status}
+                    onValueChange={(value) => setFormData((prev) => ({ ...prev, status: value }))}
+                  >
+                    <SelectTrigger className="h-11">
+                      <SelectValue placeholder="Selecione o novo status" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="aguardando_analise">🔍 Aguardando Análise</SelectItem>
-                      <SelectItem value="em_negociacao">💬 Em Negociação</SelectItem>
-                      <SelectItem value="aguardando_aprovacao">⏳ Aguardando Aprovação</SelectItem>
-                      <SelectItem value="pedido_fechado">✅ Pedido Fechado</SelectItem>
-                      <SelectItem value="orcamento_perdido">❌ Orçamento Perdido</SelectItem>
+                      {statusOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
 
-                <div>
-                  <Label htmlFor="channel">Canal de Contato</Label>
-                  <Select value={selectedChannel} onValueChange={setSelectedChannel}>
-                    <SelectTrigger>
-                      <SelectValue />
+                <div className="space-y-2">
+                  <Label htmlFor="canal" className="text-sm font-semibold">
+                    Canal de Contato *
+                  </Label>
+                  <Select
+                    value={formData.canal}
+                    onValueChange={(value) => setFormData((prev) => ({ ...prev, canal: value }))}
+                  >
+                    <SelectTrigger className="h-11">
+                      <SelectValue placeholder="Como foi o contato" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="whatsapp">📱 WhatsApp</SelectItem>
-                      <SelectItem value="email">📧 E-mail</SelectItem>
-                      <SelectItem value="telefone">📞 Telefone</SelectItem>
-                      <SelectItem value="reuniao">🤝 Reunião</SelectItem>
-                      <SelectItem value="visita">🏢 Visita</SelectItem>
+                      {canalOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
               </div>
 
-              <div>
-                <Label htmlFor="observacoes">Observações do Follow-up *</Label>
+              <div className="space-y-2">
+                <Label htmlFor="observacoes" className="text-sm font-semibold">
+                  Detalhes da Conversa *
+                </Label>
                 <Textarea
                   id="observacoes"
-                  placeholder="Descreva o que aconteceu no follow-up, próximos passos, feedback do cliente, etc..."
-                  value={followupObservacoes}
-                  onChange={(e) => setFollowupObservacoes(e.target.value)}
-                  rows={4}
-                  className="mt-1"
+                  value={formData.observacoes}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, observacoes: e.target.value }))}
+                  placeholder="Descreva detalhadamente o que foi conversado:&#10;• Qual foi a reação do cliente?&#10;• Quais objeções foram levantadas?&#10;• Que próximos passos foram acordados?&#10;• Como o cliente está se sentindo sobre a proposta?&#10;• Há alguma urgência ou prazo específico?"
+                  rows={6}
+                  className="resize-none text-sm leading-relaxed"
                   required
                 />
+                <p className="text-xs text-muted-foreground">
+                  📝 Seja específico e detalhado - essas informações alimentarão a análise IA
+                </p>
               </div>
 
-              <div className="flex gap-2">
-                <Button
-                  type="submit"
-                  disabled={!followupStatus || !followupObservacoes.trim() || isSubmitting}
-                  className="flex-1"
-                >
+              <div className="flex justify-end gap-3">
+                <Button type="button" variant="outline" onClick={onClose} className="px-6 bg-transparent">
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={isSubmitting} className="px-6">
                   {isSubmitting ? (
                     <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
                       Registrando...
                     </>
                   ) : (
                     <>
-                      <Plus className="h-4 w-4 mr-2" />
+                      <Send className="h-4 w-4 mr-2" />
                       Registrar Follow-up
                     </>
                   )}
-                </Button>
-                <Button type="button" variant="outline" onClick={onClose}>
-                  Cancelar
                 </Button>
               </div>
             </form>
           </TabsContent>
 
-          <TabsContent value="suggestions" className="space-y-4 mt-4">
-            {!config.apiKey ? (
-              <Card>
+          <TabsContent value="analysis" className="space-y-4 overflow-y-auto max-h-[calc(95vh-200px)]">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Brain className="h-6 w-6 text-blue-600" />
+                <div>
+                  <h3 className="font-semibold text-lg">Análise Inteligente de Vendas</h3>
+                  <p className="text-sm text-muted-foreground">
+                    IA especializada em SPIN Selling e psicologia de vendas
+                  </p>
+                </div>
+              </div>
+              <Button
+                onClick={generateSmartAnalysis}
+                disabled={isAnalyzing || !config.apiKey}
+                size="lg"
+                className="px-6"
+              >
+                {isAnalyzing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Analisando...
+                  </>
+                ) : (
+                  <>
+                    <Zap className="h-4 w-4 mr-2" />
+                    Gerar Análise Completa
+                  </>
+                )}
+              </Button>
+            </div>
+
+            {!config.apiKey && (
+              <Card className="border-yellow-200 bg-yellow-50">
                 <CardContent className="p-6 text-center">
-                  <Brain className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <h3 className="font-semibold mb-2">IA não configurada</h3>
-                  <p className="text-sm text-gray-600">
-                    Configure sua API Key da OpenAI para receber sugestões inteligentes.
+                  <AlertCircle className="h-12 w-12 mx-auto mb-4 text-yellow-600" />
+                  <h3 className="font-semibold mb-2">Configure a API Key da IA</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Para usar a análise inteligente, configure sua API Key da OpenAI nas configurações do sistema.
                   </p>
                 </CardContent>
               </Card>
-            ) : isLoadingSuggestions ? (
-              <Card>
-                <CardContent className="p-6 text-center">
-                  <Loader2 className="w-8 h-8 text-blue-500 mx-auto mb-4 animate-spin" />
-                  <p className="text-sm text-gray-600">Gerando sugestões inteligentes...</p>
+            )}
+
+            {isAnalyzing && (
+              <Card className="border-blue-200 bg-blue-50">
+                <CardContent className="p-6">
+                  <div className="flex items-center gap-3">
+                    <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+                    <div>
+                      <p className="font-medium text-blue-800">Análise em andamento...</p>
+                      <p className="text-sm text-blue-600">{currentAnalysisStep}</p>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
-            ) : (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold flex items-center gap-2">
-                    <Lightbulb className="w-5 h-5 text-yellow-500" />
-                    Sugestões Personalizadas
-                  </h3>
-                  <Button variant="outline" size="sm" onClick={loadAISuggestions}>
-                    <Zap className="w-4 h-4 mr-2" />
-                    Atualizar
-                  </Button>
-                </div>
+            )}
 
-                <div className="grid gap-4">
-                  {aiSuggestions.map((suggestion, index) => (
-                    <Card key={index} className="border-l-4 border-l-blue-500">
-                      <CardContent className="p-4">
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <span className="text-lg">{getPriorityIcon(suggestion.prioridade)}</span>
-                            <h4 className="font-semibold">{suggestion.titulo}</h4>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Badge className={getPriorityColor(suggestion.prioridade)}>{suggestion.prioridade}</Badge>
-                            <Button variant="ghost" size="sm" onClick={() => copyToClipboard(suggestion.conteudo)}>
-                              <Copy className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </div>
-                        <p className="text-sm text-gray-700 leading-relaxed">{suggestion.conteudo}</p>
-                        <Badge variant="outline" className="mt-2 text-xs">
-                          {suggestion.tipo}
-                        </Badge>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-
-                {aiSuggestions.length === 0 && (
+            {smartAnalysis && (
+              <div className="space-y-6">
+                {/* Métricas Principais */}
+                <div className="grid grid-cols-4 gap-4">
                   <Card>
-                    <CardContent className="p-6 text-center">
-                      <Target className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                      <p className="text-sm text-gray-600">Nenhuma sugestão disponível no momento.</p>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Gauge className="h-3 w-3" />
+                        PROBABILIDADE
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <div className="text-2xl font-bold text-blue-600">{smartAnalysis.probabilidade}%</div>
+                      <div className="w-full bg-gray-200 rounded-full h-1.5 mt-2">
+                        <div
+                          className="bg-blue-600 h-1.5 rounded-full transition-all duration-1000"
+                          style={{ width: `${smartAnalysis.probabilidade}%` }}
+                        />
+                      </div>
                     </CardContent>
                   </Card>
-                )}
-              </div>
-            )}
-          </TabsContent>
 
-          <TabsContent value="chat" className="space-y-4 mt-4">
-            {!config.apiKey ? (
-              <Card>
-                <CardContent className="p-6 text-center">
-                  <Brain className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <h3 className="font-semibold mb-2">IA não configurada</h3>
-                  <p className="text-sm text-gray-600">Configure sua API Key da OpenAI para usar o chat.</p>
-                </CardContent>
-              </Card>
-            ) : (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <MessageCircle className="h-5 w-5" />
-                    Chat Contextual
-                  </CardTitle>
-                  <CardDescription>Converse sobre estratégias específicas para este orçamento</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ScrollArea className="h-64 mb-4 border rounded-lg p-4">
-                    <div className="space-y-3">
-                      {chatMessages.length === 0 && (
-                        <div className="text-center text-gray-500 py-8">
-                          <MessageCircle className="h-8 w-8 mx-auto mb-2 text-gray-300" />
-                          <p className="mb-2">Inicie uma conversa sobre este orçamento</p>
-                          <div className="text-xs space-y-1">
-                            <p>💡 "Como posso acelerar o fechamento?"</p>
-                            <p>💡 "Que objeções posso esperar?"</p>
-                            <p>💡 "Como negociar o preço?"</p>
-                          </div>
-                        </div>
-                      )}
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Star className="h-3 w-3" />
+                        CONFIANÇA
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <div className="text-2xl font-bold text-purple-600">{smartAnalysis.confianca}%</div>
+                      <div className="text-xs text-muted-foreground">na análise</div>
+                    </CardContent>
+                  </Card>
 
-                      {chatMessages.map((message) => (
-                        <div
-                          key={message.id}
-                          className={`flex gap-3 ${message.role === "user" ? "justify-end" : "justify-start"}`}
-                        >
-                          <div
-                            className={`flex gap-3 max-w-[80%] ${message.role === "user" ? "flex-row-reverse" : "flex-row"}`}
-                          >
-                            <div className="flex-shrink-0">
-                              {message.role === "user" ? (
-                                <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
-                                  <User className="w-4 h-4 text-white" />
-                                </div>
-                              ) : (
-                                <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
-                                  <Bot className="w-4 h-4 text-white" />
-                                </div>
-                              )}
-                            </div>
-                            <div
-                              className={`rounded-lg p-3 ${
-                                message.role === "user" ? "bg-blue-500 text-white" : "bg-gray-100 text-gray-900"
-                              }`}
-                            >
-                              <div className="text-sm whitespace-pre-wrap">{message.content}</div>
-                              <div
-                                className={`text-xs mt-1 opacity-70 ${
-                                  message.role === "user" ? "text-blue-100" : "text-gray-500"
-                                }`}
-                              >
-                                {message.timestamp.toLocaleTimeString("pt-BR", {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-xs text-muted-foreground flex items-center gap-1">
+                        <AlertTriangle className="h-3 w-3" />
+                        URGÊNCIA
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <div className={`text-2xl font-bold ${getUrgencyColor(smartAnalysis.urgencia)}`}>
+                        {smartAnalysis.urgencia}/10
+                      </div>
+                      <div className="text-xs text-muted-foreground">nível de urgência</div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Building className="h-3 w-3" />
+                        SEGMENTO
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <div className="text-sm font-medium">{smartAnalysis.segmento_cliente}</div>
+                      <div className="text-xs text-muted-foreground">{smartAnalysis.perfil_comportamental}</div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Análise SPIN Selling */}
+                <Card className="border-indigo-200 bg-indigo-50">
+                  <CardHeader>
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <BookOpen className="h-4 w-4 text-indigo-600" />
+                      Análise SPIN Selling
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <h4 className="font-semibold text-xs text-indigo-800 mb-1">SITUAÇÃO</h4>
+                        <p className="text-sm">{smartAnalysis.analise_spin.situacao}</p>
+                      </div>
+                      <div>
+                        <h4 className="font-semibold text-xs text-indigo-800 mb-1">PROBLEMA</h4>
+                        <p className="text-sm">{smartAnalysis.analise_spin.problema}</p>
+                      </div>
+                      <div>
+                        <h4 className="font-semibold text-xs text-indigo-800 mb-1">IMPLICAÇÃO</h4>
+                        <p className="text-sm">{smartAnalysis.analise_spin.implicacao}</p>
+                      </div>
+                      <div>
+                        <h4 className="font-semibold text-xs text-indigo-800 mb-1">NECESSIDADE-PAGAMENTO</h4>
+                        <p className="text-sm">{smartAnalysis.analise_spin.necessidade_pagamento}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Motivos Detalhados */}
+                <div className="grid grid-cols-3 gap-4">
+                  <Card className="border-green-200 bg-green-50">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm flex items-center gap-2 text-green-800">
+                        <ThumbsUp className="h-4 w-4" />
+                        Sinais Positivos
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <ul className="space-y-1">
+                        {smartAnalysis.motivos_detalhados.positivos.map((item, i) => (
+                          <li key={i} className="text-sm flex items-start gap-2">
+                            <span className="text-green-600 mt-0.5">✓</span>
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border-red-200 bg-red-50">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm flex items-center gap-2 text-red-800">
+                        <ThumbsDown className="h-4 w-4" />
+                        Sinais de Alerta
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <ul className="space-y-1">
+                        {smartAnalysis.motivos_detalhados.negativos.map((item, i) => (
+                          <li key={i} className="text-sm flex items-start gap-2">
+                            <span className="text-red-600 mt-0.5">⚠</span>
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border-gray-200 bg-gray-50">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm flex items-center gap-2 text-gray-800">
+                        <Eye className="h-4 w-4" />
+                        Pontos Neutros
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <ul className="space-y-1">
+                        {smartAnalysis.motivos_detalhados.neutros.map((item, i) => (
+                          <li key={i} className="text-sm flex items-start gap-2">
+                            <span className="text-gray-600 mt-0.5">•</span>
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Gatilhos Mentais */}
+                <Card className="border-purple-200 bg-purple-50">
+                  <CardHeader>
+                    <CardTitle className="text-sm flex items-center gap-2 text-purple-800">
+                      <Zap className="h-4 w-4" />
+                      Gatilhos Mentais Recomendados
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-wrap gap-2">
+                      {smartAnalysis.gatilhos_mentais.map((gatilho, i) => (
+                        <Badge key={i} variant="secondary" className="bg-purple-100 text-purple-800">
+                          {gatilho}
+                        </Badge>
                       ))}
+                    </div>
+                  </CardContent>
+                </Card>
 
-                      {isAILoading && (
-                        <div className="flex gap-3 justify-start">
-                          <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
-                            <Bot className="w-4 h-4 text-white" />
-                          </div>
-                          <div className="bg-gray-100 rounded-lg p-3">
-                            <div className="flex items-center gap-2 text-sm text-gray-600">
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                              Pensando...
-                            </div>
-                          </div>
+                {/* Estratégias e Próximos Passos */}
+                <div className="grid grid-cols-2 gap-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <Target className="h-4 w-4 text-green-600" />
+                        Estratégias Personalizadas
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <ScrollArea className="h-64 pr-3">
+                        <div className="text-sm whitespace-pre-wrap leading-relaxed">
+                          {smartAnalysis.estrategias_personalizadas}
                         </div>
-                      )}
-                    </div>
-                  </ScrollArea>
+                      </ScrollArea>
+                    </CardContent>
+                  </Card>
 
-                  <div className="flex gap-2">
-                    <Input
-                      value={currentMessage}
-                      onChange={(e) => setCurrentMessage(e.target.value)}
-                      placeholder="Digite sua pergunta sobre este orçamento..."
-                      onKeyPress={(e) => e.key === "Enter" && !e.shiftKey && sendChatMessage()}
-                      disabled={isAILoading}
-                      className="flex-1"
-                    />
-                    <Button onClick={sendChatMessage} disabled={!currentMessage.trim() || isAILoading}>
-                      <Send className="h-4 w-4" />
-                    </Button>
-                  </div>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <CheckCircle className="h-4 w-4 text-blue-600" />
+                        Próximos Passos Detalhados
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <ScrollArea className="h-64 pr-3">
+                        <div className="text-sm whitespace-pre-wrap leading-relaxed">
+                          {smartAnalysis.proximos_passos_detalhados}
+                        </div>
+                      </ScrollArea>
+                    </CardContent>
+                  </Card>
+                </div>
 
-                  <div className="flex items-center justify-between text-xs text-gray-500 mt-2">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs">
-                        <MessageCircle className="w-3 h-3 mr-1" />
-                        {config.model || "gpt-4o-mini"}
-                      </Badge>
+                {/* Scripts Sugeridos */}
+                <Card className="border-orange-200 bg-orange-50">
+                  <CardHeader>
+                    <CardTitle className="text-sm flex items-center gap-2 text-orange-800">
+                      <MessageCircle className="h-4 w-4" />
+                      Scripts de Vendas Sugeridos
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div>
+                      <h4 className="font-semibold text-sm text-orange-800 mb-2">💬 Script de Abertura</h4>
+                      <div className="bg-white p-3 rounded border text-sm">
+                        {smartAnalysis.scripts_sugeridos.abertura}
+                      </div>
                     </div>
-                    <div>{chatMessages.length > 0 && `${chatMessages.length} mensagens`}</div>
-                  </div>
-                </CardContent>
-              </Card>
+
+                    <div>
+                      <h4 className="font-semibold text-sm text-orange-800 mb-2">🛡️ Tratamento de Objeções</h4>
+                      <div className="space-y-2">
+                        {smartAnalysis.scripts_sugeridos.objecoes.map((objecao, i) => (
+                          <div key={i} className="bg-white p-2 rounded border text-xs">
+                            {objecao}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <h4 className="font-semibold text-sm text-orange-800 mb-2">🎯 Script de Fechamento</h4>
+                      <div className="bg-white p-3 rounded border text-sm">
+                        {smartAnalysis.scripts_sugeridos.fechamento}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Cronograma de Ação */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Calendar className="h-4 w-4 text-blue-600" />
+                      Cronograma de Ação Sugerido
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <h4 className="font-semibold text-xs text-red-600 mb-2 flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          IMEDIATO (hoje)
+                        </h4>
+                        <ul className="space-y-1">
+                          {smartAnalysis.cronograma_acao.imediato.map((acao, i) => (
+                            <li key={i} className="text-xs flex items-start gap-1">
+                              <span className="text-red-600 mt-0.5">●</span>
+                              {acao}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      <div>
+                        <h4 className="font-semibold text-xs text-yellow-600 mb-2 flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          CURTO PRAZO (2-5 dias)
+                        </h4>
+                        <ul className="space-y-1">
+                          {smartAnalysis.cronograma_acao.curto_prazo.map((acao, i) => (
+                            <li key={i} className="text-xs flex items-start gap-1">
+                              <span className="text-yellow-600 mt-0.5">●</span>
+                              {acao}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      <div>
+                        <h4 className="font-semibold text-xs text-green-600 mb-2 flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          MÉDIO PRAZO (1-2 semanas)
+                        </h4>
+                        <ul className="space-y-1">
+                          {smartAnalysis.cronograma_acao.medio_prazo.map((acao, i) => (
+                            <li key={i} className="text-xs flex items-start gap-1">
+                              <span className="text-green-600 mt-0.5">●</span>
+                              {acao}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Alertas e Oportunidades */}
+                <div className="grid grid-cols-2 gap-4">
+                  <Card className="border-yellow-200 bg-yellow-50">
+                    <CardHeader>
+                      <CardTitle className="text-sm flex items-center gap-2 text-yellow-800">
+                        <AlertCircle className="h-4 w-4" />
+                        Alertas Comportamentais
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <ul className="space-y-1">
+                        {smartAnalysis.alertas_comportamentais.map((alerta, i) => (
+                          <li key={i} className="text-sm flex items-start gap-2">
+                            <span className="text-yellow-600 mt-0.5">⚡</span>
+                            {alerta}
+                          </li>
+                        ))}
+                      </ul>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border-green-200 bg-green-50">
+                    <CardHeader>
+                      <CardTitle className="text-sm flex items-center gap-2 text-green-800">
+                        <Award className="h-4 w-4" />
+                        Oportunidades de Upsell
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <ul className="space-y-1">
+                        {smartAnalysis.oportunidades_upsell.map((oportunidade, i) => (
+                          <li key={i} className="text-sm flex items-start gap-2">
+                            <span className="text-green-600 mt-0.5">💰</span>
+                            {oportunidade}
+                          </li>
+                        ))}
+                      </ul>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Rodapé da análise */}
+                <div className="text-xs text-muted-foreground flex items-center justify-center gap-2 pt-4 border-t">
+                  <Brain className="h-3 w-3" />
+                  <span>
+                    Análise gerada por IA especializada em vendas • Confiança: {smartAnalysis.confianca}% • Baseada em
+                    dados reais e técnicas comprovadas
+                  </span>
+                </div>
+              </div>
             )}
           </TabsContent>
         </Tabs>

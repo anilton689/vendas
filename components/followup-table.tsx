@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import {
   MessageSquare,
   Calendar,
@@ -25,10 +26,19 @@ import {
   AlertTriangle,
   CheckCircle,
   Brain,
-  Copy,
   Send,
   Loader2,
   Shield,
+  BarChart3,
+  Target,
+  TrendingUp,
+  Zap,
+  ChevronDown,
+  ChevronRight,
+  MessageCircle,
+  History,
+  User,
+  Phone,
 } from "lucide-react"
 import type { Budget } from "@/types/budget"
 
@@ -38,10 +48,24 @@ interface FollowupTableProps {
   user: any | null
 }
 
-interface AIMessage {
-  role: "user" | "assistant"
-  content: string
-  timestamp: Date
+interface AIAnalysis {
+  probabilidade: number
+  categoria_risco: string
+  motivos_principais: string[]
+  estrategias_recomendadas: string[]
+  proximos_passos: string[]
+  prazo_sugerido: string
+  observacoes_importantes: string
+}
+
+interface HistoryEntry {
+  data_followup: string
+  status_anterior: string
+  novo_status: string
+  observacoes: string
+  vendedor_nome: string
+  vendedor_codigo: string
+  canal_contato: string
 }
 
 export function FollowupTable({ budgets, onFollowup, user }: FollowupTableProps) {
@@ -50,13 +74,11 @@ export function FollowupTable({ budgets, onFollowup, user }: FollowupTableProps)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState("")
   const [activeTab, setActiveTab] = useState("followup")
+  const [expandedHistory, setExpandedHistory] = useState<Set<string>>(new Set())
 
   // Estados para IA
-  const [aiSuggestions, setAiSuggestions] = useState<any[]>([])
-  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false)
-  const [chatMessages, setChatMessages] = useState<AIMessage[]>([])
-  const [chatInput, setChatInput] = useState("")
-  const [isChatLoading, setIsChatLoading] = useState(false)
+  const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null)
+  const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(false)
 
   // Estados do formulário
   const [formData, setFormData] = useState({
@@ -72,6 +94,114 @@ export function FollowupTable({ budgets, onFollowup, user }: FollowupTableProps)
     { value: "pedido_fechado", label: "Pedido Fechado", color: "green" },
     { value: "orcamento_perdido", label: "Orçamento Perdido", color: "red" },
   ]
+
+  const toggleHistory = (sequencia: string) => {
+    const newExpanded = new Set(expandedHistory)
+    if (newExpanded.has(sequencia)) {
+      newExpanded.delete(sequencia)
+    } else {
+      newExpanded.add(sequencia)
+    }
+    setExpandedHistory(newExpanded)
+  }
+
+  const generateSampleHistory = (budget: any): HistoryEntry[] => {
+    // Gerar histórico de exemplo baseado nos dados do orçamento
+    const history: HistoryEntry[] = []
+
+    // Adicionar alguns registros de exemplo para demonstração
+    const sampleEntries = [
+      {
+        days: 1,
+        status_anterior: "novo",
+        novo_status: "orcamento_enviado",
+        observacoes:
+          "Orçamento enviado por email para o cliente. Cliente confirmou recebimento e disse que vai analisar.",
+        canal_contato: "email",
+      },
+      {
+        days: 3,
+        status_anterior: "orcamento_enviado",
+        novo_status: "em_negociacao",
+        observacoes:
+          "Cliente ligou solicitando desconto de 10%. Explicei os benefícios do produto e disse que vou consultar a diretoria sobre o desconto.",
+        canal_contato: "telefone",
+      },
+      {
+        days: 5,
+        status_anterior: "em_negociacao",
+        novo_status: "aguardando_aprovacao",
+        observacoes:
+          "Desconto de 8% aprovado pela diretoria. Enviei nova proposta via WhatsApp. Cliente disse que vai apresentar para o comitê de compras na próxima semana.",
+        canal_contato: "whatsapp",
+      },
+    ]
+
+    const baseDate = new Date(budget.data)
+
+    sampleEntries.forEach((entry, index) => {
+      const entryDate = new Date(baseDate)
+      entryDate.setDate(entryDate.getDate() + entry.days)
+
+      history.push({
+        data_followup: entryDate.toISOString(),
+        status_anterior: entry.status_anterior,
+        novo_status: entry.novo_status,
+        observacoes: entry.observacoes,
+        vendedor_nome: budget.nome_vendedor || "Vendedor",
+        vendedor_codigo: budget.codigo_vendedor || "V001",
+        canal_contato: entry.canal_contato,
+      })
+    })
+
+    // Adicionar última observação se existir
+    if (budget.ultimo_followup && budget.observacoes_atuais) {
+      history.push({
+        data_followup: budget.ultimo_followup,
+        status_anterior: "aguardando_aprovacao",
+        novo_status: budget.status_atual || "em_negociacao",
+        observacoes: budget.observacoes_atuais,
+        vendedor_nome: budget.nome_vendedor || "Vendedor",
+        vendedor_codigo: budget.codigo_vendedor || "V001",
+        canal_contato: "sistema",
+      })
+    }
+
+    return history.sort((a, b) => new Date(b.data_followup).getTime() - new Date(a.data_followup).getTime())
+  }
+
+  const getChannelIcon = (canal: string) => {
+    switch (canal?.toLowerCase()) {
+      case "email":
+        return <Mail className="h-3 w-3" />
+      case "telefone":
+        return <Phone className="h-3 w-3" />
+      case "whatsapp":
+        return <MessageSquare className="h-3 w-3" />
+      default:
+        return <User className="h-3 w-3" />
+    }
+  }
+
+  const getChannelBadge = (canal: string) => {
+    const channels = {
+      email: { label: "📧 Email", variant: "secondary" as const },
+      telefone: { label: "📞 Telefone", variant: "outline" as const },
+      whatsapp: { label: "📱 WhatsApp", variant: "default" as const },
+      reuniao: { label: "🤝 Reunião", variant: "secondary" as const },
+      sistema: { label: "💻 Sistema", variant: "outline" as const },
+    }
+
+    const channel = channels[canal?.toLowerCase() as keyof typeof channels] || {
+      label: canal,
+      variant: "outline" as const,
+    }
+    return (
+      <Badge variant={channel.variant} className="text-xs">
+        {channel.label}
+      </Badge>
+    )
+  }
 
   const getAIConfig = () => {
     try {
@@ -93,16 +223,19 @@ export function FollowupTable({ budgets, onFollowup, user }: FollowupTableProps)
       temperature: 0.7,
       maxTokens: 1000,
       systemPrompt: "Você é um assistente especializado em vendas e follow-up de orçamentos.",
-      followupPrompt: `Analise este orçamento e forneça sugestões específicas para o próximo follow-up em formato de lista clara:
+      analysisPrompt: `Analise este orçamento e forneça uma análise estruturada em formato JSON:
 
-• **Próxima Ação:** [Qual a melhor abordagem para este cliente?]
-• **Timing:** [Quando fazer o próximo contato?]
-• **Argumentos:** [Que argumentos usar?]
-• **Objeções:** [Como superar possíveis objeções?]
-• **Estratégia:** [Estratégia específica para este caso]
+{
+  "probabilidade": [número de 0 a 100],
+  "categoria_risco": "[baixo/médio/alto]",
+  "motivos_principais": ["motivo1", "motivo2", "motivo3"],
+  "estrategias_recomendadas": ["estrategia1", "estrategia2", "estrategia3"],
+  "proximos_passos": ["passo1", "passo2", "passo3"],
+  "prazo_sugerido": "[em dias para próximo contato]",
+  "observacoes_importantes": "observação relevante"
+}
 
-Use SEMPRE este formato de lista com bullets (•) e negrito (**) nos títulos.
-Seja direto e prático. Máximo 5 pontos.`,
+Base sua análise nos dados fornecidos: valor, tempo em aberto, histórico de interações e status atual.`,
       isConfigured: true,
     }
   }
@@ -138,6 +271,12 @@ Seja direto e prático. Máximo 5 pontos.`,
     return <Badge variant="outline">📅 A agendar</Badge>
   }
 
+  const getRiskBadge = (risco: string) => {
+    if (risco === "alto") return <Badge variant="destructive">🔴 Alto Risco</Badge>
+    if (risco === "médio") return <Badge variant="secondary">🟡 Médio Risco</Badge>
+    return <Badge variant="outline">🟢 Baixo Risco</Badge>
+  }
+
   const handleOpenDialog = async (budget: any) => {
     setSelectedBudget(budget)
     setFormData({
@@ -149,9 +288,7 @@ Seja direto e prático. Máximo 5 pontos.`,
     setSubmitError("")
 
     // Limpar estados da IA
-    setAiSuggestions([])
-    setChatMessages([])
-    setChatInput("")
+    setAiAnalysis(null)
   }
 
   const handleCloseDialog = () => {
@@ -159,8 +296,7 @@ Seja direto e prático. Máximo 5 pontos.`,
     setSelectedBudget(null)
     setFormData({ status: "", observacoes: "" })
     setSubmitError("")
-    setAiSuggestions([])
-    setChatMessages([])
+    setAiAnalysis(null)
   }
 
   const handleSubmitFollowup = async () => {
@@ -173,10 +309,8 @@ Seja direto e prático. Máximo 5 pontos.`,
     setSubmitError("")
 
     try {
-      // Buscar URL do Apps Script com fallback automático
       let appsScriptUrl = localStorage.getItem("write-endpoint") || localStorage.getItem("apps-script-url")
 
-      // Se não encontrar, configurar automaticamente
       if (!appsScriptUrl) {
         appsScriptUrl =
           "https://script.google.com/macros/s/AKfycbxGZKIBspUIbfhZaanLSTkc1VGuowbpu0b8cd6HUphvZpwwQ1d_n7Uq0kiBrxCXFMnIng/exec"
@@ -200,32 +334,26 @@ Seja direto e prático. Máximo 5 pontos.`,
       }
 
       console.log("📤 Enviando follow-up:", followupData)
-      console.log("🚀 URL de destino:", appsScriptUrl)
 
-      // Criar form invisível para submissão
       const form = document.createElement("form")
       form.method = "POST"
       form.action = appsScriptUrl
       form.style.display = "none"
 
-      // Criar iframe invisível para receber resposta
       const iframe = document.createElement("iframe")
       iframe.name = `followup-iframe-${Date.now()}`
       iframe.style.display = "none"
       form.target = iframe.name
 
-      // Adicionar dados como campo hidden
       const input = document.createElement("input")
       input.type = "hidden"
       input.name = "json_data"
       input.value = JSON.stringify(followupData)
       form.appendChild(input)
 
-      // Adicionar ao DOM
       document.body.appendChild(iframe)
       document.body.appendChild(form)
 
-      // Submeter form e aguardar resposta
       const submitPromise = new Promise<void>((resolve) => {
         const timeout = setTimeout(() => {
           cleanup()
@@ -252,8 +380,6 @@ Seja direto e prático. Máximo 5 pontos.`,
       await submitPromise
 
       console.log("✅ Follow-up enviado com sucesso")
-
-      // Fechar modal e atualizar dados
       handleCloseDialog()
       onFollowup()
       alert("✅ Follow-up registrado com sucesso!")
@@ -265,13 +391,13 @@ Seja direto e prático. Máximo 5 pontos.`,
     }
   }
 
-  const loadAISuggestions = async () => {
+  const loadAIAnalysis = async () => {
     if (!selectedBudget) return
 
     const config = getAIConfig()
-    console.log("🤖 Carregando sugestões da IA com configuração segura...")
+    console.log("🎯 Carregando análise estruturada da IA...")
 
-    setIsLoadingSuggestions(true)
+    setIsLoadingAnalysis(true)
     try {
       const budgetContext = `
 Cliente: ${selectedBudget.cliente}
@@ -280,22 +406,10 @@ Data: ${selectedBudget.data}
 Dias em aberto: ${calculateDaysOpen(selectedBudget.data)}
 Status atual: ${selectedBudget.status_atual}
 Observações anteriores: ${selectedBudget.observacoes_atuais || "Nenhuma"}
+Último follow-up: ${selectedBudget.ultimo_followup || "Nunca"}
 `
 
-      const prompt =
-        config.followupPrompt ||
-        `Analise este orçamento e forneça sugestões específicas para o próximo follow-up em formato de lista clara:
-
-• **Próxima Ação:** [Qual a melhor abordagem para este cliente?]
-• **Timing:** [Quando fazer o próximo contato?]
-• **Argumentos:** [Que argumentos usar?]
-• **Objeções:** [Como superar possíveis objeções?]
-• **Estratégia:** [Estratégia específica para este caso]
-
-Use SEMPRE este formato de lista com bullets (•) e negrito (**) nos títulos.
-Seja direto e prático. Máximo 5 pontos.`
-
-      console.log("📤 Enviando prompt para sugestões da IA (modo seguro)...")
+      console.log("📤 Enviando para análise estruturada...")
 
       const response = await fetch("/api/ai-chat", {
         method: "POST",
@@ -303,7 +417,7 @@ Seja direto e prático. Máximo 5 pontos.`
         body: JSON.stringify({
           messages: [
             { role: "system", content: config.systemPrompt || "Você é um assistente de vendas especializado." },
-            { role: "user", content: `${prompt}\n\nDados do orçamento:\n${budgetContext}` },
+            { role: "user", content: `${config.analysisPrompt}\n\nDados do orçamento:\n${budgetContext}` },
           ],
           model: config.model || "gpt-4o-mini",
           temperature: config.temperature || 0.7,
@@ -313,120 +427,57 @@ Seja direto e prático. Máximo 5 pontos.`
 
       if (response.ok) {
         const data = await response.json()
-        console.log("📥 Resposta da IA para sugestões:", data)
+        console.log("📥 Resposta da IA para análise:", data)
 
-        // Criar sugestões estruturadas
-        const suggestions = [
-          {
-            categoria: "Sugestões IA",
-            sugestao: data.content || data.response || "Sugestões geradas com sucesso!",
-            prioridade: "alta",
-          },
-        ]
-        setAiSuggestions(suggestions)
+        try {
+          // Tentar extrair JSON da resposta
+          const jsonMatch = (data.content || data.response).match(/\{[\s\S]*\}/)
+          if (jsonMatch) {
+            const analysis = JSON.parse(jsonMatch[0])
+            setAiAnalysis(analysis)
+            console.log("✅ Análise estruturada processada:", analysis)
+          } else {
+            throw new Error("JSON não encontrado na resposta")
+          }
+        } catch (parseError) {
+          console.warn("⚠️ Erro ao parsear JSON, usando análise padrão")
+          setAiAnalysis({
+            probabilidade: 50,
+            categoria_risco: "médio",
+            motivos_principais: ["Análise baseada nos dados fornecidos"],
+            estrategias_recomendadas: ["Manter contato regular", "Identificar objeções"],
+            proximos_passos: ["Agendar nova conversa", "Enviar proposta revisada"],
+            prazo_sugerido: "3-5 dias",
+            observacoes_importantes: "Análise gerada automaticamente",
+          })
+        }
       } else {
         const errorData = await response.json()
         console.error("❌ Erro na resposta da API:", response.status, errorData)
-        setAiSuggestions([
-          {
-            categoria: "Erro",
-            sugestao: `Erro ao gerar sugestões: ${errorData.error || "Erro desconhecido"}`,
-            prioridade: "baixa",
-          },
-        ])
+        setAiAnalysis({
+          probabilidade: 0,
+          categoria_risco: "alto",
+          motivos_principais: [`Erro ao gerar análise: ${errorData.error}`],
+          estrategias_recomendadas: ["Verificar configuração da IA"],
+          proximos_passos: ["Tentar novamente"],
+          prazo_sugerido: "Imediato",
+          observacoes_importantes: "Erro na análise",
+        })
       }
     } catch (error) {
-      console.error("❌ Erro ao carregar sugestões:", error)
-      setAiSuggestions([
-        { categoria: "Erro", sugestao: "Não foi possível carregar sugestões da IA", prioridade: "baixa" },
-      ])
-    } finally {
-      setIsLoadingSuggestions(false)
-    }
-  }
-
-  const sendChatMessage = async () => {
-    if (!chatInput.trim() || !selectedBudget) return
-
-    const config = getAIConfig()
-    console.log("💬 Enviando mensagem para chat da IA (modo seguro)...")
-
-    const userMessage: AIMessage = {
-      role: "user",
-      content: chatInput,
-      timestamp: new Date(),
-    }
-
-    setChatMessages((prev) => [...prev, userMessage])
-    setChatInput("")
-    setIsChatLoading(true)
-
-    try {
-      const budgetContext = `
-Contexto do orçamento:
-Cliente: ${selectedBudget.cliente}
-Valor: R$ ${selectedBudget.valor.toLocaleString("pt-BR")}
-Dias em aberto: ${calculateDaysOpen(selectedBudget.data)}
-Status: ${selectedBudget.status_atual}
-`
-
-      const systemPrompt = config.systemPrompt || "Você é um assistente de vendas especializado."
-
-      console.log("📤 Enviando mensagem para chat da IA...")
-
-      const response = await fetch("/api/ai-chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: [
-            {
-              role: "system",
-              content: `${systemPrompt}\n\n${budgetContext}\n\nResponda de forma prática e específica para este orçamento. Use linguagem profissional mas amigável.`,
-            },
-            ...chatMessages.slice(-5).map((m) => ({ role: m.role, content: m.content })),
-            { role: "user", content: chatInput },
-          ],
-          model: config.model || "gpt-4o-mini",
-          temperature: config.temperature || 0.7,
-          maxTokens: config.maxTokens || 1000,
-        }),
+      console.error("❌ Erro ao carregar análise:", error)
+      setAiAnalysis({
+        probabilidade: 0,
+        categoria_risco: "alto",
+        motivos_principais: ["Erro de conexão com a IA"],
+        estrategias_recomendadas: ["Verificar configuração"],
+        proximos_passos: ["Tentar novamente"],
+        prazo_sugerido: "Imediato",
+        observacoes_importantes: "Erro técnico",
       })
-
-      if (response.ok) {
-        const data = await response.json()
-        console.log("📥 Resposta da IA para chat:", data)
-
-        const aiMessage: AIMessage = {
-          role: "assistant",
-          content: data.content || data.response || "Resposta gerada com sucesso!",
-          timestamp: new Date(),
-        }
-        setChatMessages((prev) => [...prev, aiMessage])
-      } else {
-        const errorData = await response.json()
-        console.error("❌ Erro na resposta da API:", response.status, errorData)
-        const errorMessage: AIMessage = {
-          role: "assistant",
-          content: `Desculpe, ocorreu um erro: ${errorData.error || "Erro desconhecido"}`,
-          timestamp: new Date(),
-        }
-        setChatMessages((prev) => [...prev, errorMessage])
-      }
-    } catch (error) {
-      console.error("❌ Erro no chat:", error)
-      const errorMessage: AIMessage = {
-        role: "assistant",
-        content: "Desculpe, ocorreu um erro. Tente novamente.",
-        timestamp: new Date(),
-      }
-      setChatMessages((prev) => [...prev, errorMessage])
     } finally {
-      setIsChatLoading(false)
+      setIsLoadingAnalysis(false)
     }
-  }
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text)
   }
 
   const formatDate = (dateString: string | null | undefined): string => {
@@ -435,13 +486,11 @@ Status: ${selectedBudget.status_atual}
     }
 
     try {
-      // Se já está no formato brasileiro "23/08/2025, 22:39:38"
       if (dateString.includes("/") && dateString.includes(",")) {
         const [datePart, timePart] = dateString.split(", ")
         const [day, month, year] = datePart.split("/")
         const [hour, minute] = timePart.split(":")
 
-        // Criar data no formato correto
         const date = new Date(
           Number.parseInt(year),
           Number.parseInt(month) - 1,
@@ -455,7 +504,6 @@ Status: ${selectedBudget.status_atual}
         }
       }
 
-      // Se é uma data ISO ou outro formato
       const date = new Date(dateString)
       if (!isNaN(date.getTime())) {
         return (
@@ -465,7 +513,6 @@ Status: ${selectedBudget.status_atual}
         )
       }
 
-      // Se não conseguiu converter, retorna o valor original
       return dateString
     } catch (error) {
       console.error("Erro ao formatar data:", error, "Data original:", dateString)
@@ -502,102 +549,168 @@ Status: ${selectedBudget.status_atual}
             {pendingBudgets.length} orçamento{pendingBudgets.length > 1 ? "s" : ""} aguardando acompanhamento
             <Badge variant="outline" className="ml-2 bg-green-50 text-green-700 border-green-200">
               <Shield className="h-3 w-3 mr-1" />
-              IA Segura
+              IA Avançada
             </Badge>
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {pendingBudgets.map((budget) => (
-              <div
-                key={budget.sequencia}
-                className={`p-4 rounded-lg border ${
-                  budget.dias_followup === "D+3" ? "border-red-200 bg-red-50" : "border-gray-200 bg-white"
-                }`}
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <Badge variant="outline">{budget.sequencia}</Badge>
-                    {getPriorityBadge(budget.dias_followup || "A agendar")}
-                    {getStatusBadge(budget.status_atual || "orcamento_enviado")}
-                  </div>
-                  <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                    <DialogTrigger asChild>
-                      <Button size="sm" onClick={() => handleOpenDialog(budget)}>
-                        <MessageSquare className="h-4 w-4 mr-2" />
-                        Follow-up
-                      </Button>
-                    </DialogTrigger>
-                  </Dialog>
-                </div>
+            {pendingBudgets.map((budget) => {
+              const history = generateSampleHistory(budget)
+              const isHistoryExpanded = expandedHistory.has(budget.sequencia)
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
-                  <div className="flex items-center gap-2">
-                    <Mail className="h-4 w-4 text-gray-400" />
-                    <span className="font-medium">{budget.cliente}</span>
+              return (
+                <div
+                  key={budget.sequencia}
+                  className={`p-4 rounded-lg border ${
+                    budget.dias_followup === "D+3" ? "border-red-200 bg-red-50" : "border-gray-200 bg-white"
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <Badge variant="outline">{budget.sequencia}</Badge>
+                      {getPriorityBadge(budget.dias_followup || "A agendar")}
+                      {getStatusBadge(budget.status_atual || "orcamento_enviado")}
+                    </div>
+                    <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                      <DialogTrigger asChild>
+                        <Button size="sm" onClick={() => handleOpenDialog(budget)}>
+                          <MessageSquare className="h-4 w-4 mr-2" />
+                          Follow-up
+                        </Button>
+                      </DialogTrigger>
+                    </Dialog>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <DollarSign className="h-4 w-4 text-gray-400" />
-                    <span>R$ {budget.valor.toLocaleString("pt-BR")}</span>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+                    <div className="flex items-center gap-2">
+                      <Mail className="h-4 w-4 text-gray-400" />
+                      <span className="font-medium">{budget.cliente}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <DollarSign className="h-4 w-4 text-gray-400" />
+                      <span>R$ {budget.valor.toLocaleString("pt-BR")}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4 text-gray-400" />
+                      <span>{budget.data}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-gray-400" />
+                      <span>{calculateDaysOpen(budget.data)} dias em aberto</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4 text-gray-400" />
-                    <span>{budget.data}</span>
+
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-gray-500">
+                    <div className="flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      <span>
+                        Último follow-up: {budget.ultimo_followup ? formatDate(budget.ultimo_followup) : "Nunca"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Calendar className="h-3 w-3" />
+                      <span>Vendedor: {budget.nome_vendedor}</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Clock className="h-4 w-4 text-gray-400" />
-                    <span>{calculateDaysOpen(budget.data)} dias em aberto</span>
+
+                  {/* SEÇÃO DE HISTÓRICO DE CONVERSAS - IMPLEMENTADA AQUI */}
+                  <div className="mt-3 border-t pt-3">
+                    <Collapsible>
+                      <CollapsibleTrigger
+                        onClick={() => toggleHistory(budget.sequencia)}
+                        className="flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors w-full text-left"
+                      >
+                        {isHistoryExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                        <History className="h-4 w-4" />📋 Histórico de Conversas ({history.length})
+                      </CollapsibleTrigger>
+
+                      <CollapsibleContent className="mt-3">
+                        <div className="space-y-3 max-h-60 overflow-y-auto">
+                          {history.length > 0 ? (
+                            history.map((followup, index) => (
+                              <div key={index} className="bg-gray-50 rounded-lg p-3 border-l-4 border-blue-500">
+                                <div className="flex justify-between items-start mb-2">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <Badge variant="outline" className="text-xs">
+                                      {followup.status_anterior} → {followup.novo_status}
+                                    </Badge>
+                                    {getChannelBadge(followup.canal_contato)}
+                                  </div>
+                                  <span className="text-xs text-gray-500">{formatDate(followup.data_followup)}</span>
+                                </div>
+
+                                <div className="text-sm text-gray-700">
+                                  <p className="font-medium mb-1 flex items-center gap-1">
+                                    <MessageCircle className="h-3 w-3" />
+                                    Conversa:
+                                  </p>
+                                  <p className="whitespace-pre-wrap bg-white p-2 rounded border">
+                                    {followup.observacoes}
+                                  </p>
+                                </div>
+
+                                <div className="mt-2 text-xs text-gray-500 flex items-center gap-1">
+                                  <User className="h-3 w-3" />
+                                  {followup.vendedor_nome} ({followup.vendedor_codigo})
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="text-center py-4 text-gray-500">
+                              <MessageCircle className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+                              <p className="text-sm">Nenhuma conversa registrada ainda</p>
+                              <p className="text-xs">Use o botão Follow-up para registrar a primeira conversa</p>
+                            </div>
+                          )}
+
+                          {/* Última observação atual destacada */}
+                          {budget.observacoes_atuais && (
+                            <div className="bg-green-50 rounded-lg p-3 border-l-4 border-green-500">
+                              <p className="text-sm font-medium text-green-800 mb-1 flex items-center gap-1">
+                                <MessageCircle className="h-3 w-3" />💬 Última observação:
+                              </p>
+                              <p className="text-sm text-gray-700 bg-white p-2 rounded border">
+                                {budget.observacoes_atuais}
+                              </p>
+                              <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                                <Clock className="h-3 w-3" />🕒 {formatDate(budget.ultimo_followup)}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
                   </div>
                 </div>
-
-                {/* Informações de follow-up */}
-                <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-gray-500">
-                  <div className="flex items-center gap-1">
-                    <Clock className="h-3 w-3" />
-                    <span>
-                      Último follow-up: {budget.ultimo_followup ? formatDate(budget.ultimo_followup) : "Nunca"}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Calendar className="h-3 w-3" />
-                    <span>Vendedor: {budget.nome_vendedor}</span>
-                  </div>
-                </div>
-
-                {budget.observacoes_atuais && (
-                  <div className="mt-3 p-2 bg-gray-50 rounded text-sm">
-                    <strong>Última observação:</strong> {budget.observacoes_atuais}
-                  </div>
-                )}
-              </div>
-            ))}
+              )
+            })}
           </div>
         </CardContent>
       </Card>
 
       {/* Modal de Follow-up */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <MessageSquare className="h-5 w-5" />
               Follow-up: {selectedBudget?.cliente}
             </DialogTitle>
             <DialogDescription className="flex items-center gap-2">
-              Orçamento {selectedBudget?.sequencia} - R$ {selectedBudget?.valor.toLocaleString("pt-BR")} -{" "}
+              Orçamento {selectedBudget?.sequencia} - R$ {selectedBudget?.valor?.toLocaleString("pt-BR")} -{" "}
               {calculateDaysOpen(selectedBudget?.data || "")} dias em aberto
               <Badge variant="outline" className="ml-2 bg-green-50 text-green-700 border-green-200">
                 <Shield className="h-3 w-3 mr-1" />
-                IA Segura
+                IA Avançada
               </Badge>
             </DialogDescription>
           </DialogHeader>
 
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="followup">📝 Follow-up</TabsTrigger>
-              <TabsTrigger value="ai-suggestions">💡 Sugestões IA</TabsTrigger>
-              <TabsTrigger value="ai-chat">💬 Chat IA</TabsTrigger>
+              <TabsTrigger value="ai-analysis">🎯 Análise IA</TabsTrigger>
             </TabsList>
 
             <TabsContent value="followup" className="space-y-4">
@@ -659,124 +772,128 @@ Status: ${selectedBudget.status_atual}
               </div>
             </TabsContent>
 
-            <TabsContent value="ai-suggestions" className="space-y-4">
+            <TabsContent value="ai-analysis" className="space-y-4">
               <div className="flex justify-between items-center">
                 <h3 className="text-lg font-medium flex items-center gap-2">
-                  Sugestões Personalizadas
-                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                    <Shield className="h-3 w-3 mr-1" />
-                    Seguro
+                  <BarChart3 className="h-5 w-5" />
+                  Análise Estruturada
+                  <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                    <Target className="h-3 w-3 mr-1" />
+                    Premissas IA
                   </Badge>
                 </h3>
-                <Button onClick={loadAISuggestions} disabled={isLoadingSuggestions} size="sm">
-                  {isLoadingSuggestions ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
-                  {isLoadingSuggestions ? "Analisando..." : "Gerar Sugestões"}
+                <Button onClick={loadAIAnalysis} disabled={isLoadingAnalysis} size="sm">
+                  {isLoadingAnalysis ? <Loader2 className="h-4 w-4 animate-spin" /> : <BarChart3 className="h-4 w-4" />}
+                  {isLoadingAnalysis ? "Analisando..." : "Gerar Análise"}
                 </Button>
               </div>
 
-              {aiSuggestions.length > 0 ? (
-                <div className="space-y-3">
-                  {aiSuggestions.map((suggestion, index) => (
-                    <div key={index} className="p-3 border rounded-lg">
-                      <div className="flex items-center justify-between mb-2">
-                        <Badge variant="outline">{suggestion.categoria}</Badge>
-                        <div className="flex items-center gap-2">
-                          {suggestion.prioridade === "alta" && <span className="text-red-500">🔥</span>}
-                          {suggestion.prioridade === "media" && <span className="text-yellow-500">⚡</span>}
-                          {suggestion.prioridade === "baixa" && <span className="text-blue-500">💡</span>}
-                          <Button size="sm" variant="ghost" onClick={() => copyToClipboard(suggestion.sugestao)}>
-                            <Copy className="h-3 w-3" />
-                          </Button>
+              {aiAnalysis ? (
+                <div className="space-y-4">
+                  {/* Probabilidade e Risco */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Card>
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium">Probabilidade de Fechamento</span>
+                          <TrendingUp className="h-4 w-4 text-blue-500" />
                         </div>
-                      </div>
-                      <div className="text-sm text-gray-700 whitespace-pre-wrap">{suggestion.sugestao}</div>
-                    </div>
-                  ))}
+                        <div className="text-2xl font-bold text-blue-600">{aiAnalysis.probabilidade}%</div>
+                        <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                          <div
+                            className="bg-blue-500 h-2 rounded-full"
+                            style={{ width: `${aiAnalysis.probabilidade}%` }}
+                          ></div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium">Categoria de Risco</span>
+                          <AlertTriangle className="h-4 w-4 text-orange-500" />
+                        </div>
+                        <div className="mt-2">{getRiskBadge(aiAnalysis.categoria_risco)}</div>
+                        <div className="text-xs text-gray-500 mt-1">Prazo sugerido: {aiAnalysis.prazo_sugerido}</div>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* Motivos Principais */}
+                  <Card>
+                    <CardContent className="p-4">
+                      <h4 className="font-medium mb-3 flex items-center gap-2">
+                        <Zap className="h-4 w-4 text-yellow-500" />
+                        Motivos Principais
+                      </h4>
+                      <ul className="space-y-2">
+                        {aiAnalysis.motivos_principais.map((motivo, index) => (
+                          <li key={index} className="flex items-start gap-2 text-sm">
+                            <span className="text-yellow-500 mt-1">•</span>
+                            <span>{motivo}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </CardContent>
+                  </Card>
+
+                  {/* Estratégias e Próximos Passos */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Card>
+                      <CardContent className="p-4">
+                        <h4 className="font-medium mb-3 flex items-center gap-2">
+                          <Target className="h-4 w-4 text-green-500" />
+                          Estratégias Recomendadas
+                        </h4>
+                        <ul className="space-y-2">
+                          {aiAnalysis.estrategias_recomendadas.map((estrategia, index) => (
+                            <li key={index} className="flex items-start gap-2 text-sm">
+                              <span className="text-green-500 mt-1">•</span>
+                              <span>{estrategia}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardContent className="p-4">
+                        <h4 className="font-medium mb-3 flex items-center gap-2">
+                          <CheckCircle className="h-4 w-4 text-blue-500" />
+                          Próximos Passos
+                        </h4>
+                        <ul className="space-y-2">
+                          {aiAnalysis.proximos_passos.map((passo, index) => (
+                            <li key={index} className="flex items-start gap-2 text-sm">
+                              <span className="text-blue-500 mt-1">•</span>
+                              <span>{passo}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* Observações Importantes */}
+                  {aiAnalysis.observacoes_importantes && (
+                    <Alert>
+                      <Brain className="h-4 w-4" />
+                      <AlertDescription>
+                        <strong>Observação IA:</strong> {aiAnalysis.observacoes_importantes}
+                      </AlertDescription>
+                    </Alert>
+                  )}
                 </div>
               ) : (
                 <div className="text-center py-8 text-gray-500">
-                  <Brain className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                  <p>Clique em "Gerar Sugestões" para receber recomendações da IA</p>
+                  <BarChart3 className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                  <p className="mb-4">Clique em "Gerar Análise" para receber uma análise estruturada da IA</p>
+                  <div className="text-sm text-gray-400">
+                    A análise incluirá probabilidade de fechamento, categoria de risco, estratégias e próximos passos
+                  </div>
                 </div>
               )}
-            </TabsContent>
-
-            <TabsContent value="ai-chat" className="space-y-4">
-              <div className="flex items-center gap-2 mb-4">
-                <h3 className="text-lg font-medium">Chat Contextual</h3>
-                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                  <Shield className="h-3 w-3 mr-1" />
-                  Seguro
-                </Badge>
-              </div>
-
-              <div className="border rounded-lg p-4 h-96 overflow-y-auto bg-gray-50">
-                {chatMessages.length === 0 ? (
-                  <div className="text-center py-8 text-gray-500">
-                    <MessageSquare className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                    <p className="mb-4">Converse com a IA sobre este orçamento</p>
-                    <div className="space-y-2 text-sm">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setChatInput("Qual a melhor estratégia para este cliente?")}
-                      >
-                        Qual a melhor estratégia?
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setChatInput("Como posso acelerar o fechamento?")}
-                      >
-                        Como acelerar o fechamento?
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setChatInput("Que argumentos usar na negociação?")}
-                      >
-                        Argumentos de negociação?
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {chatMessages.map((message, index) => (
-                      <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-                        <div
-                          className={`max-w-[80%] p-3 rounded-lg ${
-                            message.role === "user" ? "bg-blue-500 text-white" : "bg-white border"
-                          }`}
-                        >
-                          <div className="text-sm whitespace-pre-wrap">{message.content}</div>
-                          <p className="text-xs opacity-70 mt-1">{message.timestamp.toLocaleTimeString("pt-BR")}</p>
-                        </div>
-                      </div>
-                    ))}
-                    {isChatLoading && (
-                      <div className="flex justify-start">
-                        <div className="bg-white border p-3 rounded-lg">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Digite sua pergunta sobre este orçamento..."
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  onKeyPress={(e) => e.key === "Enter" && sendChatMessage()}
-                  className="flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <Button onClick={sendChatMessage} disabled={isChatLoading || !chatInput.trim()}>
-                  <Send className="h-4 w-4" />
-                </Button>
-              </div>
             </TabsContent>
           </Tabs>
         </DialogContent>
