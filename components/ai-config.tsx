@@ -11,7 +11,6 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import {
-  Settings,
   Brain,
   TestTube,
   CheckCircle,
@@ -20,145 +19,126 @@ import {
   Shield,
   Zap,
   MessageSquare,
+  RefreshCw,
+  Save,
 } from "lucide-react"
+import { useAIConfig } from "@/hooks/useAIConfig"
 
 interface AIConfigProps {
   onConfigSaved?: () => void
 }
 
 export function AIConfig({ onConfigSaved }: AIConfigProps) {
-  const [config, setConfig] = useState({
-    model: "gpt-4o-mini",
-    temperature: 0.7,
-    maxTokens: 1000,
-    systemPrompt:
-      "Você é um assistente especializado em vendas e follow-up de orçamentos. Forneça respostas práticas e específicas para ajudar vendedores a fechar mais negócios.",
-    followupPrompt: `Analise este orçamento e forneça sugestões específicas para o próximo follow-up em formato de lista clara:
+  const { config, updateConfig, testConnection, isLoading, refreshConfig } = useAIConfig()
 
-• **Próxima Ação:** [Qual a melhor abordagem para este cliente?]
-• **Timing:** [Quando fazer o próximo contato?]
-• **Argumentos:** [Que argumentos usar?]
-• **Objeções:** [Como superar possíveis objeções?]
-• **Estratégia:** [Estratégia específica para este caso]
-
-Use SEMPRE este formato de lista com bullets (•) e negrito (**) nos títulos.
-Seja direto e prático. Máximo 5 pontos.`,
-    analysisPrompt: `Analise este orçamento e forneça uma análise estruturada em formato JSON:
-
-{
-  "probabilidade": [número de 0 a 100],
-  "categoria_risco": "[baixo/médio/alto]",
-  "motivos_principais": ["motivo1", "motivo2", "motivo3"],
-  "estrategias_recomendadas": ["estrategia1", "estrategia2", "estrategia3"],
-  "proximos_passos": ["passo1", "passo2", "passo3"],
-  "prazo_sugerido": "[em dias para próximo contato]",
-  "observacoes_importantes": "observação relevante"
-}
-
-Base sua análise nos dados fornecidos: valor, tempo em aberto, histórico de interações e status atual.`,
-    isConfigured: false,
-  })
-
+  const [localConfig, setLocalConfig] = useState(config)
   const [isSaving, setIsSaving] = useState(false)
   const [isTesting, setIsTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
   const [saveMessage, setSaveMessage] = useState("")
 
+  // Sincronizar config local quando o config do hook mudar
   useEffect(() => {
-    loadConfig()
-  }, [])
+    setLocalConfig(config)
+  }, [config])
 
-  const loadConfig = () => {
-    try {
-      const savedConfig = localStorage.getItem("ai-config")
-      if (savedConfig) {
-        const parsed = JSON.parse(savedConfig)
-        setConfig((prev) => ({ ...prev, ...parsed }))
-        console.log("🔧 Configuração da IA carregada:", parsed)
-      }
-    } catch (error) {
-      console.error("❌ Erro ao carregar configuração:", error)
-    }
-  }
-
-  const saveConfig = async () => {
+  const saveConfigToSheet = async () => {
     setIsSaving(true)
     setSaveMessage("")
 
     try {
-      const configToSave = { ...config, isConfigured: true }
-      localStorage.setItem("ai-config", JSON.stringify(configToSave))
-      setConfig(configToSave)
-      setSaveMessage("✅ Configuração salva com sucesso!")
+      console.log("💾 [AIConfig] Salvando configuração na planilha...")
 
-      if (onConfigSaved) {
-        onConfigSaved()
+      // Buscar configuração do Apps Script
+      const adminConfig = localStorage.getItem("admin-sheets-config")
+      if (!adminConfig) {
+        throw new Error("Configuração da planilha não encontrada")
       }
 
-      console.log("💾 Configuração da IA salva:", configToSave)
+      const { appsScriptUrl } = JSON.parse(adminConfig)
+      if (!appsScriptUrl) {
+        throw new Error("URL do Apps Script não configurada")
+      }
 
-      setTimeout(() => setSaveMessage(""), 3000)
-    } catch (error) {
-      console.error("❌ Erro ao salvar configuração:", error)
-      setSaveMessage("❌ Erro ao salvar configuração")
-    } finally {
-      setIsSaving(false)
-    }
-  }
+      // Preparar dados para envio
+      const configData = {
+        action: "updateConfigIA",
+        data: {
+          systemPrompt: localConfig.systemPrompt,
+          followupPrompt: localConfig.followupPrompt,
+          analysisPrompt: localConfig.analysisPrompt,
+          model: localConfig.model,
+          temperature: localConfig.temperature.toString(),
+          maxTokens: localConfig.maxTokens.toString(),
+        },
+      }
 
-  const testConnection = async () => {
-    setIsTesting(true)
-    setTestResult(null)
+      console.log("📤 [AIConfig] Enviando dados:", configData)
 
-    try {
-      console.log("🧪 Testando conexão com a IA...")
-
-      const response = await fetch("/api/ai-chat", {
+      // Enviar para Apps Script
+      const response = await fetch(appsScriptUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          messages: [
-            {
-              role: "system",
-              content: config.systemPrompt,
-            },
-            {
-              role: "user",
-              content: "Teste de conexão. Responda apenas: 'Conexão estabelecida com sucesso!'",
-            },
-          ],
-          model: config.model,
-          temperature: config.temperature,
-          maxTokens: 100,
+          json_data: JSON.stringify(configData),
         }),
       })
 
-      if (response.ok) {
-        const data = await response.json()
-        console.log("✅ Teste de conexão bem-sucedido:", data)
-        setTestResult({
-          success: true,
-          message: `Conexão estabelecida! Modelo: ${config.model}`,
-        })
-      } else {
-        const errorData = await response.json()
-        console.error("❌ Erro no teste:", response.status, errorData)
-        setTestResult({
-          success: false,
-          message: `Erro ${response.status}: ${errorData.error || "Erro desconhecido"}`,
-        })
+      if (!response.ok) {
+        throw new Error(`Erro HTTP: ${response.status}`)
       }
+
+      const result = await response.json()
+      console.log("📥 [AIConfig] Resposta do Apps Script:", result)
+
+      if (result.success) {
+        // Atualizar configuração local
+        await updateConfig({ ...localConfig, isConfigured: true })
+        setSaveMessage("✅ Configuração salva na planilha com sucesso!")
+
+        if (onConfigSaved) {
+          onConfigSaved()
+        }
+
+        console.log("✅ [AIConfig] Configuração salva com sucesso")
+      } else {
+        throw new Error(result.error || "Erro desconhecido")
+      }
+
+      setTimeout(() => setSaveMessage(""), 5000)
     } catch (error: any) {
-      console.error("❌ Erro no teste de conexão:", error)
+      console.error("❌ [AIConfig] Erro ao salvar configuração:", error)
+      setSaveMessage(`❌ Erro ao salvar: ${error.message}`)
+      setTimeout(() => setSaveMessage(""), 5000)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleTestConnection = async () => {
+    setIsTesting(true)
+    setTestResult(null)
+
+    try {
+      const result = await testConnection()
+      setTestResult(result)
+    } catch (error: any) {
       setTestResult({
         success: false,
-        message: `Erro de conexão: ${error.message}`,
+        message: `Erro no teste: ${error.message}`,
       })
     } finally {
       setIsTesting(false)
     }
+  }
+
+  const handleRefreshConfig = async () => {
+    console.log("🔄 [AIConfig] Atualizando configuração da planilha...")
+    await refreshConfig()
+    setSaveMessage("🔄 Configuração atualizada da planilha!")
+    setTimeout(() => setSaveMessage(""), 3000)
   }
 
   return (
@@ -170,10 +150,13 @@ Base sua análise nos dados fornecidos: valor, tempo em aberto, histórico de in
             Configuração da IA
             <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
               <Shield className="h-3 w-3 mr-1" />
-              API Segura
+              Integrada com Planilha
             </Badge>
           </CardTitle>
-          <CardDescription>Configure a inteligência artificial para análises e sugestões de follow-up</CardDescription>
+          <CardDescription>
+            Configure a inteligência artificial para análises e sugestões de follow-up. As configurações são salvas na
+            aba "ConfigIA" da planilha.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="basic" className="space-y-4">
@@ -188,8 +171,8 @@ Base sua análise nos dados fornecidos: valor, tempo em aberto, histórico de in
                 <div className="space-y-2">
                   <Label htmlFor="model">Modelo da IA</Label>
                   <Select
-                    value={config.model}
-                    onValueChange={(value) => setConfig((prev) => ({ ...prev, model: value }))}
+                    value={localConfig.model}
+                    onValueChange={(value) => setLocalConfig((prev) => ({ ...prev, model: value }))}
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -205,8 +188,10 @@ Base sua análise nos dados fornecidos: valor, tempo em aberto, histórico de in
                 <div className="space-y-2">
                   <Label htmlFor="maxTokens">Máximo de Tokens</Label>
                   <Select
-                    value={config.maxTokens.toString()}
-                    onValueChange={(value) => setConfig((prev) => ({ ...prev, maxTokens: Number.parseInt(value) }))}
+                    value={localConfig.maxTokens.toString()}
+                    onValueChange={(value) =>
+                      setLocalConfig((prev) => ({ ...prev, maxTokens: Number.parseInt(value) }))
+                    }
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -221,10 +206,10 @@ Base sua análise nos dados fornecidos: valor, tempo em aberto, histórico de in
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="temperature">Criatividade: {config.temperature}</Label>
+                <Label htmlFor="temperature">Criatividade: {localConfig.temperature}</Label>
                 <Slider
-                  value={[config.temperature]}
-                  onValueChange={(value) => setConfig((prev) => ({ ...prev, temperature: value[0] }))}
+                  value={[localConfig.temperature]}
+                  onValueChange={(value) => setLocalConfig((prev) => ({ ...prev, temperature: value[0] }))}
                   max={1}
                   min={0}
                   step={0.1}
@@ -238,13 +223,21 @@ Base sua análise nos dados fornecidos: valor, tempo em aberto, histórico de in
             </TabsContent>
 
             <TabsContent value="prompts" className="space-y-4">
+              <Alert>
+                <Shield className="h-4 w-4" />
+                <AlertDescription>
+                  <strong>Integração com Planilha:</strong> Os prompts são carregados automaticamente da aba "ConfigIA"
+                  e salvos diretamente na planilha Google Sheets.
+                </AlertDescription>
+              </Alert>
+
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="systemPrompt">Prompt do Sistema</Label>
                   <Textarea
                     id="systemPrompt"
-                    value={config.systemPrompt}
-                    onChange={(e) => setConfig((prev) => ({ ...prev, systemPrompt: e.target.value }))}
+                    value={localConfig.systemPrompt}
+                    onChange={(e) => setLocalConfig((prev) => ({ ...prev, systemPrompt: e.target.value }))}
                     rows={3}
                     placeholder="Defina como a IA deve se comportar..."
                   />
@@ -254,8 +247,8 @@ Base sua análise nos dados fornecidos: valor, tempo em aberto, histórico de in
                   <Label htmlFor="followupPrompt">Prompt para Sugestões de Follow-up</Label>
                   <Textarea
                     id="followupPrompt"
-                    value={config.followupPrompt}
-                    onChange={(e) => setConfig((prev) => ({ ...prev, followupPrompt: e.target.value }))}
+                    value={localConfig.followupPrompt}
+                    onChange={(e) => setLocalConfig((prev) => ({ ...prev, followupPrompt: e.target.value }))}
                     rows={8}
                     placeholder="Como a IA deve gerar sugestões de follow-up..."
                   />
@@ -265,8 +258,8 @@ Base sua análise nos dados fornecidos: valor, tempo em aberto, histórico de in
                   <Label htmlFor="analysisPrompt">Prompt para Análise Estruturada</Label>
                   <Textarea
                     id="analysisPrompt"
-                    value={config.analysisPrompt}
-                    onChange={(e) => setConfig((prev) => ({ ...prev, analysisPrompt: e.target.value }))}
+                    value={localConfig.analysisPrompt}
+                    onChange={(e) => setLocalConfig((prev) => ({ ...prev, analysisPrompt: e.target.value }))}
                     rows={10}
                     placeholder="Como a IA deve fazer análises estruturadas..."
                   />
@@ -280,12 +273,12 @@ Base sua análise nos dados fornecidos: valor, tempo em aberto, histórico de in
                   <Shield className="h-4 w-4" />
                   <AlertDescription>
                     <strong>Segurança:</strong> A API Key está configurada no servidor Vercel e não é exposta no
-                    frontend.
+                    frontend. Os prompts são carregados da planilha Google Sheets.
                   </AlertDescription>
                 </Alert>
 
                 <div className="flex items-center gap-4">
-                  <Button onClick={testConnection} disabled={isTesting} className="flex items-center gap-2">
+                  <Button onClick={handleTestConnection} disabled={isTesting} className="flex items-center gap-2">
                     {isTesting ? (
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -317,20 +310,20 @@ Base sua análise nos dados fornecidos: valor, tempo em aberto, histórico de in
                   <h4 className="font-medium mb-2">Status da Configuração:</h4>
                   <div className="space-y-2 text-sm">
                     <div className="flex items-center gap-2">
-                      {config.isConfigured ? (
+                      {localConfig.isConfigured ? (
                         <CheckCircle className="h-4 w-4 text-green-500" />
                       ) : (
                         <AlertTriangle className="h-4 w-4 text-yellow-500" />
                       )}
-                      <span>Configuração: {config.isConfigured ? "Ativa" : "Pendente"}</span>
+                      <span>Configuração: {localConfig.isConfigured ? "Ativa" : "Pendente"}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <Zap className="h-4 w-4 text-blue-500" />
-                      <span>Modelo: {config.model}</span>
+                      <span>Modelo: {localConfig.model}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <MessageSquare className="h-4 w-4 text-purple-500" />
-                      <span>Tokens: {config.maxTokens}</span>
+                      <span>Tokens: {localConfig.maxTokens}</span>
                     </div>
                   </div>
                 </div>
@@ -338,17 +331,36 @@ Base sua análise nos dados fornecidos: valor, tempo em aberto, histórico de in
             </TabsContent>
           </Tabs>
 
-          <div className="flex justify-end gap-2 mt-6">
-            <Button onClick={saveConfig} disabled={isSaving}>
-              {isSaving ? (
+          <div className="flex justify-between items-center mt-6">
+            <Button
+              onClick={handleRefreshConfig}
+              variant="outline"
+              disabled={isLoading}
+              className="flex items-center gap-2 bg-transparent"
+            >
+              {isLoading ? (
                 <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Salvando...
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Carregando...
                 </>
               ) : (
                 <>
-                  <Settings className="h-4 w-4 mr-2" />
-                  Salvar Configuração
+                  <RefreshCw className="h-4 w-4" />
+                  Atualizar da Planilha
+                </>
+              )}
+            </Button>
+
+            <Button onClick={saveConfigToSheet} disabled={isSaving}>
+              {isSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Salvando na Planilha...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  Salvar na Planilha
                 </>
               )}
             </Button>
