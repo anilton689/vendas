@@ -172,15 +172,7 @@ DADOS DO ORÇAMENTO:
 ${budget.historico?.length ? `Último follow-up: ${budget.historico[budget.historico.length - 1]?.observacoes}` : ""}
 `
 
-      console.log("📤 [FollowupForm] Enviando para sugestões da IA...")
-
-      const response = await fetch("/api/ai-chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          message: `${currentConfig.followupPrompt}
+      const fullMessage = `${currentConfig.followupPrompt}
 
 ${budgetContext}
 
@@ -194,14 +186,27 @@ Forneça 4 sugestões específicas para o follow-up no formato JSON:
       "prioridade": "alta|media|baixa"
     }
   ]
-}`,
+}`
+
+      console.log("📤 [FollowupForm] Enviando para sugestões da IA...")
+      console.log("📝 [FollowupForm] Mensagem completa:", fullMessage.substring(0, 200) + "...")
+
+      const response = await fetch("/api/ai-chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: fullMessage,
           budget: null,
           config: currentConfig,
         }),
       })
 
       if (!response.ok) {
-        throw new Error(`Erro na API da IA: ${response.status}`)
+        const errorData = await response.json()
+        console.error("❌ [FollowupForm] Erro na API:", errorData)
+        throw new Error(`Erro na API da IA: ${response.status} - ${errorData.error || "Erro desconhecido"}`)
       }
 
       const data = await response.json()
@@ -209,7 +214,8 @@ Forneça 4 sugestões específicas para o follow-up no formato JSON:
 
       // Tentar extrair JSON da resposta
       try {
-        const jsonMatch = data.response.match(/\{[\s\S]*\}/)
+        const responseText = data.response || data.content || ""
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/)
         if (jsonMatch) {
           const parsed = JSON.parse(jsonMatch[0])
           if (parsed.sugestoes && Array.isArray(parsed.sugestoes)) {
@@ -239,13 +245,17 @@ Forneça 4 sugestões específicas para o follow-up no formato JSON:
       }
     } catch (error) {
       console.error("❌ [FollowupForm] Erro ao carregar sugestões da IA:", error)
+      alert(`Erro ao carregar sugestões: ${error}`)
     } finally {
       setIsLoadingSuggestions(false)
     }
   }
 
   const sendChatMessage = async () => {
-    if (!currentMessage.trim()) return
+    if (!currentMessage.trim()) {
+      console.log("⚠️ [FollowupForm] Mensagem vazia")
+      return
+    }
 
     if (!aiConfig) {
       alert("❌ Configuração da IA não carregada. Aguarde um momento e tente novamente.")
@@ -260,6 +270,7 @@ Forneça 4 sugestões específicas para o follow-up no formato JSON:
     }
 
     setChatMessages((prev) => [...prev, userMessage])
+    const messageToSend = currentMessage.trim()
     setCurrentMessage("")
     setIsAILoading(true)
 
@@ -273,10 +284,15 @@ CONTEXTO DO ORÇAMENTO:
 - Observações: ${budget.observacoes_atuais || "Nenhuma"}
 - Histórico: ${budget.historico?.length || 0} interações
 
-PERGUNTA: ${currentMessage.trim()}
+PERGUNTA: ${messageToSend}
 `
 
       console.log("📤 [FollowupForm] Enviando mensagem para chat da IA...")
+      console.log("📝 [FollowupForm] Contexto do orçamento:", budgetContext.substring(0, 200) + "...")
+      console.log("🤖 [FollowupForm] Configuração da IA:", {
+        model: aiConfig.model,
+        systemPromptLength: aiConfig.systemPrompt?.length || 0,
+      })
 
       const response = await fetch("/api/ai-chat", {
         method: "POST",
@@ -286,31 +302,43 @@ PERGUNTA: ${currentMessage.trim()}
         body: JSON.stringify({
           message: budgetContext,
           budget: null,
-          config: aiConfig,
+          config: {
+            model: aiConfig.model,
+            temperature: aiConfig.temperature,
+            maxTokens: aiConfig.maxTokens,
+            systemPrompt: aiConfig.systemPrompt,
+          },
         }),
       })
 
+      console.log("📡 [FollowupForm] Status da resposta:", response.status)
+
       if (!response.ok) {
-        throw new Error(`Erro na API da IA: ${response.status}`)
+        const errorData = await response.json()
+        console.error("❌ [FollowupForm] Erro na API:", errorData)
+        throw new Error(`Erro na API da IA: ${response.status} - ${errorData.error || "Erro desconhecido"}`)
       }
 
       const data = await response.json()
       console.log("📥 [FollowupForm] Resposta da IA para chat:", data)
 
+      const aiResponse = data.response || data.content || "Desculpe, não consegui processar sua solicitação."
+
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: data.response || "Desculpe, não consegui processar sua solicitação.",
+        content: aiResponse,
         timestamp: new Date(),
       }
 
       setChatMessages((prev) => [...prev, assistantMessage])
+      console.log("✅ [FollowupForm] Mensagem da IA adicionada ao chat")
     } catch (error) {
       console.error("❌ [FollowupForm] Erro no chat da IA:", error)
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: "❌ Erro ao processar mensagem. Verifique sua configuração da IA.",
+        content: `❌ Erro ao processar mensagem: ${error}`,
         timestamp: new Date(),
       }
       setChatMessages((prev) => [...prev, errorMessage])
