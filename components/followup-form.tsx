@@ -3,14 +3,13 @@
 import type React from "react"
 
 import { useState } from "react"
-import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
-import { Plus, MessageSquare, MessageCircle, Loader2, ExternalLink } from "lucide-react"
+import { Plus, MessageSquare, Loader2 } from "lucide-react"
 
 import type { Budget } from "@/types/budget"
 
@@ -137,11 +136,6 @@ export function FollowupForm({ budget, isOpen, onClose, onSuccess, user }: Follo
     return Math.floor(diffTime / (1000 * 60 * 60 * 24))
   }
 
-  const openAIChat = () => {
-    // Abrir chat IA principal em nova aba
-    window.open("/ai-chat", "_blank")
-  }
-
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl">
@@ -161,34 +155,7 @@ export function FollowupForm({ budget, isOpen, onClose, onSuccess, user }: Follo
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6 mt-4">
-          {/* Botão para Chat IA */}
-          <Card className="border-blue-200 bg-blue-50">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="bg-blue-100 p-2 rounded-full">
-                    <MessageCircle className="h-5 w-5 text-blue-600" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-blue-900">Precisa de ajuda com estratégias?</h3>
-                    <p className="text-sm text-blue-700">Use o Chat IA para obter sugestões personalizadas</p>
-                  </div>
-                </div>
-                <Button
-                  onClick={openAIChat}
-                  variant="outline"
-                  className="border-blue-300 text-blue-700 hover:bg-blue-100 bg-transparent"
-                >
-                  <MessageCircle className="h-4 w-4 mr-2" />
-                  Abrir Chat IA
-                  <ExternalLink className="h-3 w-3 ml-2" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Formulário de Follow-up */}
+        <div className="space-y-4 mt-4">
           <form onSubmit={submitFollowup} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
