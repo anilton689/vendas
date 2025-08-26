@@ -3,29 +3,30 @@ import { type NextRequest, NextResponse } from "next/server"
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { messages, apiKey, model, temperature, maxTokens, message, budget, config } = body
+    const { messages, model, temperature, maxTokens, message, budget, config } = body
 
     console.log("🤖 AI Chat API chamada:", {
       hasMessages: !!messages,
       hasMessage: !!message,
       hasBudget: !!budget,
       hasConfig: !!config,
-      hasApiKey: !!(apiKey || config?.apiKey),
-      apiKeyStart: apiKey || config?.apiKey ? (apiKey || config?.apiKey).substring(0, 7) + "..." : "não fornecida",
+      model: model || config?.model || "gpt-4o-mini",
     })
 
-    // Verificar se a API Key foi fornecida (pode vir diretamente ou dentro de config)
-    const finalApiKey = apiKey || config?.apiKey
-    if (!finalApiKey) {
-      console.error("❌ API Key não fornecida")
-      return NextResponse.json({ error: "API Key não fornecida" }, { status: 400 })
+    // Usar API Key do ambiente do Vercel (server-side)
+    const apiKey = process.env.OPENAI_API_KEY
+    if (!apiKey) {
+      console.error("❌ OPENAI_API_KEY não configurada no Vercel")
+      return NextResponse.json(
+        {
+          error:
+            "API Key da OpenAI não configurada no servidor. Configure OPENAI_API_KEY nas variáveis de ambiente do Vercel.",
+        },
+        { status: 500 },
+      )
     }
 
-    // Verificar se a API Key tem o formato correto
-    if (!finalApiKey.startsWith("sk-")) {
-      console.error("❌ API Key inválida - deve começar com sk-")
-      return NextResponse.json({ error: "API Key inválida - deve começar com sk-" }, { status: 400 })
-    }
+    console.log("✅ API Key encontrada no ambiente do servidor")
 
     // Preparar mensagens para a API
     let finalMessages = []
@@ -64,25 +65,29 @@ Pergunta do usuário: ${message}
       ]
     }
 
+    const finalModel = model || config?.model || "gpt-4o-mini"
+    const finalTemperature = temperature || config?.temperature || 0.7
+    const finalMaxTokens = maxTokens || config?.maxTokens || 1000
+
     console.log("📤 Enviando para OpenAI:", {
-      model: model || config?.model || "gpt-4o-mini",
-      temperature: temperature || config?.temperature || 0.7,
-      max_tokens: maxTokens || config?.maxTokens || 1000,
+      model: finalModel,
+      temperature: finalTemperature,
+      max_tokens: finalMaxTokens,
       messagesCount: finalMessages.length,
     })
 
-    // Fazer a chamada para a OpenAI
+    // Fazer a chamada para a OpenAI usando a API Key do servidor
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${finalApiKey}`,
+        Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: model || config?.model || "gpt-4o-mini",
+        model: finalModel,
         messages: finalMessages,
-        temperature: temperature || config?.temperature || 0.7,
-        max_tokens: maxTokens || config?.maxTokens || 1000,
+        temperature: finalTemperature,
+        max_tokens: finalMaxTokens,
       }),
     })
 

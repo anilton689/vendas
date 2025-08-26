@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react"
 
 interface AIConfig {
-  apiKey: string
   model: string
   temperature: number
   maxTokens: number
@@ -14,14 +13,21 @@ interface AIConfig {
 }
 
 const defaultConfig: AIConfig = {
-  apiKey: "",
   model: "gpt-4o-mini",
   temperature: 0.7,
   maxTokens: 1000,
   systemPrompt:
     "Você é um assistente especializado em vendas e follow-up de orçamentos. Seja profissional, objetivo e útil.",
-  followupPrompt:
-    "Baseado nas informações do orçamento, sugira uma mensagem de follow-up profissional e persuasiva para {canal}. Considere o tempo decorrido e status atual.",
+  followupPrompt: `Analise este orçamento e forneça sugestões específicas para o próximo follow-up em formato de lista clara:
+
+• **Próxima Ação:** [Qual a melhor abordagem para este cliente?]
+• **Timing:** [Quando fazer o próximo contato?]
+• **Argumentos:** [Que argumentos usar?]
+• **Objeções:** [Como superar possíveis objeções?]
+• **Estratégia:** [Estratégia específica para este caso]
+
+Use SEMPRE este formato de lista com bullets (•) e negrito (**) nos títulos.
+Seja direto e prático. Máximo 5 pontos.`,
   analysisPrompt:
     "Analise este orçamento e forneça: 1) Probabilidade de fechamento (0-100%), 2) Motivos que influenciam positivamente, 3) Estratégias recomendadas, 4) Próximos passos sugeridos.",
   isConfigured: false,
@@ -32,16 +38,18 @@ export function useAIConfig() {
   const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
-    // Carregar configuração do localStorage
+    // Carregar configuração do localStorage (sem API Key)
     const savedConfig = localStorage.getItem("ai-config")
     if (savedConfig) {
       try {
         const parsed = JSON.parse(savedConfig)
-        const mergedConfig = { ...defaultConfig, ...parsed }
+        // Remover apiKey se existir (migração)
+        delete parsed.apiKey
+        const mergedConfig = { ...defaultConfig, ...parsed, isConfigured: true }
         setConfig(mergedConfig)
         console.log("✅ Configuração da IA carregada do localStorage:", {
-          hasApiKey: !!mergedConfig.apiKey,
           model: mergedConfig.model,
+          temperature: mergedConfig.temperature,
         })
       } catch (error) {
         console.error("❌ Erro ao carregar configuração da IA:", error)
@@ -52,27 +60,23 @@ export function useAIConfig() {
   const updateConfig = (newConfig: AIConfig) => {
     const configWithFlag = {
       ...newConfig,
-      isConfigured: !!newConfig.apiKey,
+      isConfigured: true,
     }
     setConfig(configWithFlag)
-    localStorage.setItem("ai-config", JSON.stringify(configWithFlag))
+    // Salvar sem API Key (apenas configurações do modelo)
+    const configToSave = { ...configWithFlag }
+    delete (configToSave as any).apiKey
+    localStorage.setItem("ai-config", JSON.stringify(configToSave))
     console.log("✅ Configuração da IA atualizada:", {
-      hasApiKey: !!configWithFlag.apiKey,
+      model: configWithFlag.model,
       isConfigured: configWithFlag.isConfigured,
     })
   }
 
   const testConnection = async (): Promise<{ success: boolean; message: string }> => {
-    if (!config.apiKey) {
-      return { success: false, message: "API Key não configurada" }
-    }
-
     setIsLoading(true)
     try {
-      console.log("🧪 Testando conexão com IA...", {
-        hasApiKey: !!config.apiKey,
-        apiKeyStart: config.apiKey.substring(0, 7) + "...",
-      })
+      console.log("🧪 Testando conexão com IA usando API Key do servidor...")
 
       const response = await fetch("/api/ai-chat", {
         method: "POST",
@@ -81,7 +85,6 @@ export function useAIConfig() {
           message: "Teste de conexão - responda apenas 'Conexão OK'",
           budget: null,
           config: {
-            apiKey: config.apiKey,
             model: config.model,
             temperature: config.temperature,
             maxTokens: 100,
