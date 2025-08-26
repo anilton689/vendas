@@ -12,6 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -26,6 +27,13 @@ import {
   Loader2,
   Shield,
   Send,
+  Brain,
+  Lightbulb,
+  TrendingUp,
+  Target,
+  AlertCircle,
+  Copy,
+  RefreshCw,
 } from "lucide-react"
 import type { Budget } from "@/types/budget"
 
@@ -35,12 +43,26 @@ interface FollowupTableProps {
   user: any | null
 }
 
+interface AISuggestion {
+  categoria: string
+  sugestao: string
+  confianca: number
+  prioridade: "alta" | "media" | "baixa"
+  tipo: "estrategia" | "timing" | "abordagem" | "objecao" | "fechamento"
+}
+
 export function FollowupTable({ budgets, onFollowup, user }: FollowupTableProps) {
   const [selectedBudget, setSelectedBudget] = useState<any | null>(null)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState("")
+  const [activeTab, setActiveTab] = useState("followup")
   const [formData, setFormData] = useState({ status: "", observacoes: "" })
+
+  // Estados para Sugestões IA
+  const [aiSuggestions, setAiSuggestions] = useState<AISuggestion[]>([])
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false)
+  const [suggestionsError, setSuggestionsError] = useState("")
 
   const statusOptions = [
     { value: "orcamento_enviado", label: "Orçamento Enviado", color: "blue" },
@@ -89,7 +111,10 @@ export function FollowupTable({ budgets, onFollowup, user }: FollowupTableProps)
       observacoes: "",
     })
     setIsDialogOpen(true)
+    setActiveTab("followup")
     setSubmitError("")
+    setSuggestionsError("")
+    setAiSuggestions([])
   }
 
   const handleCloseDialog = () => {
@@ -97,6 +122,8 @@ export function FollowupTable({ budgets, onFollowup, user }: FollowupTableProps)
     setSelectedBudget(null)
     setFormData({ status: "", observacoes: "" })
     setSubmitError("")
+    setSuggestionsError("")
+    setAiSuggestions([])
   }
 
   const handleSubmitFollowup = async () => {
@@ -109,10 +136,8 @@ export function FollowupTable({ budgets, onFollowup, user }: FollowupTableProps)
     setSubmitError("")
 
     try {
-      // Buscar URL do Apps Script com fallback automático
       let appsScriptUrl = localStorage.getItem("write-endpoint") || localStorage.getItem("apps-script-url")
 
-      // Se não encontrar, configurar automaticamente
       if (!appsScriptUrl) {
         appsScriptUrl =
           "https://script.google.com/macros/s/AKfycbxGZKIBspUIbfhZaanLSTkc1VGuowbpu0b8cd6HUphvZpwwQ1d_n7Uq0kiBrxCXFMnIng/exec"
@@ -136,32 +161,26 @@ export function FollowupTable({ budgets, onFollowup, user }: FollowupTableProps)
       }
 
       console.log("📤 Enviando follow-up:", followupData)
-      console.log("🚀 URL de destino:", appsScriptUrl)
 
-      // Criar form invisível para submissão
       const form = document.createElement("form")
       form.method = "POST"
       form.action = appsScriptUrl
       form.style.display = "none"
 
-      // Criar iframe invisível para receber resposta
       const iframe = document.createElement("iframe")
       iframe.name = `followup-iframe-${Date.now()}`
       iframe.style.display = "none"
       form.target = iframe.name
 
-      // Adicionar dados como campo hidden
       const input = document.createElement("input")
       input.type = "hidden"
       input.name = "json_data"
       input.value = JSON.stringify(followupData)
       form.appendChild(input)
 
-      // Adicionar ao DOM
       document.body.appendChild(iframe)
       document.body.appendChild(form)
 
-      // Submeter form e aguardar resposta
       const submitPromise = new Promise<void>((resolve) => {
         const timeout = setTimeout(() => {
           cleanup()
@@ -188,8 +207,6 @@ export function FollowupTable({ budgets, onFollowup, user }: FollowupTableProps)
       await submitPromise
 
       console.log("✅ Follow-up enviado com sucesso")
-
-      // Fechar modal e atualizar dados
       handleCloseDialog()
       onFollowup()
       alert("✅ Follow-up registrado com sucesso!")
@@ -201,19 +218,187 @@ export function FollowupTable({ budgets, onFollowup, user }: FollowupTableProps)
     }
   }
 
+  const loadAISuggestions = async () => {
+    if (!selectedBudget) return
+
+    setIsLoadingSuggestions(true)
+    setSuggestionsError("")
+
+    try {
+      // Buscar configuração da IA
+      const aiConfig = JSON.parse(localStorage.getItem("ai-config") || "{}")
+
+      if (!aiConfig.apiKey) {
+        setSuggestionsError("IA não configurada. Configure a API Key nas configurações do sistema.")
+        setIsLoadingSuggestions(false)
+        return
+      }
+
+      // Construir contexto baseado no histórico
+      const historico = selectedBudget.historico || []
+      const observacoesHistorico = historico.map((h: any) => `${h.data_hora_followup}: ${h.observacoes}`).join("\n")
+
+      const contextoBudget = `
+ANÁLISE DE ORÇAMENTO - DADOS TÉCNICOS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+INFORMAÇÕES BÁSICAS:
+• Cliente: ${selectedBudget.cliente}
+• Valor: R$ ${selectedBudget.valor.toLocaleString("pt-BR")}
+• Data Criação: ${selectedBudget.data}
+• Dias em Aberto: ${calculateDaysOpen(selectedBudget.data)}
+• Status Atual: ${selectedBudget.status_atual}
+• Vendedor: ${selectedBudget.nome_vendedor}
+
+HISTÓRICO DE INTERAÇÕES:
+${observacoesHistorico || "Nenhuma interação registrada ainda."}
+
+OBSERVAÇÕES ATUAIS:
+${selectedBudget.observacoes_atuais || "Nenhuma observação atual."}
+
+ANÁLISE REQUERIDA:
+Com base nestes dados, forneça 5 sugestões estratégicas estruturadas em JSON no formato:
+{
+  "sugestoes": [
+    {
+      "categoria": "Estratégia de Abordagem",
+      "sugestao": "Descrição específica da sugestão",
+      "confianca": 85,
+      "prioridade": "alta",
+      "tipo": "estrategia"
+    }
+  ]
+}
+
+TIPOS DISPONÍVEIS: estrategia, timing, abordagem, objecao, fechamento
+PRIORIDADES: alta, media, baixa
+CONFIANÇA: 0-100 (baseado na qualidade dos dados)
+
+Seja específico, técnico e focado em resultados mensuráveis.
+      `
+
+      console.log("🤖 Enviando solicitação de sugestões para IA...")
+
+      const response = await fetch("/api/ai-chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: [
+            {
+              role: "system",
+              content:
+                "Você é um consultor especialista em vendas B2B com 15 anos de experiência. Analise dados de orçamentos e forneça sugestões estratégicas precisas baseadas em padrões de comportamento de clientes. Sempre responda em JSON estruturado.",
+            },
+            {
+              role: "user",
+              content: contextoBudget,
+            },
+          ],
+          model: aiConfig.model || "gpt-4o-mini",
+          temperature: 0.3, // Baixa criatividade, alta precisão
+          maxTokens: 1500,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`Erro na API: ${response.status}`)
+      }
+
+      const data = await response.json()
+      console.log("📥 Resposta da IA:", data)
+
+      // Tentar extrair JSON da resposta
+      let suggestions: AISuggestion[] = []
+
+      try {
+        const content = data.content || data.response || ""
+        const jsonMatch = content.match(/\{[\s\S]*\}/)
+
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0])
+          suggestions = parsed.sugestoes || []
+        } else {
+          // Fallback: criar sugestões padrão
+          suggestions = [
+            {
+              categoria: "Análise Baseada em IA",
+              sugestao: content.substring(0, 300) + "...",
+              confianca: 70,
+              prioridade: "media" as const,
+              tipo: "estrategia" as const,
+            },
+          ]
+        }
+      } catch (parseError) {
+        console.error("Erro ao parsear JSON:", parseError)
+        suggestions = [
+          {
+            categoria: "Sugestão Geral",
+            sugestao:
+              "Com base no histórico e tempo em aberto, recomendo contato proativo focando em valor agregado e urgência na decisão.",
+            confianca: 60,
+            prioridade: "media" as const,
+            tipo: "estrategia" as const,
+          },
+        ]
+      }
+
+      setAiSuggestions(suggestions)
+    } catch (error: any) {
+      console.error("❌ Erro ao carregar sugestões:", error)
+      setSuggestionsError(`Erro ao gerar sugestões: ${error.message}`)
+    } finally {
+      setIsLoadingSuggestions(false)
+    }
+  }
+
+  const getPriorityIcon = (prioridade: string) => {
+    switch (prioridade) {
+      case "alta":
+        return <AlertCircle className="h-4 w-4 text-red-500" />
+      case "media":
+        return <TrendingUp className="h-4 w-4 text-yellow-500" />
+      case "baixa":
+        return <Lightbulb className="h-4 w-4 text-blue-500" />
+      default:
+        return <Target className="h-4 w-4 text-gray-500" />
+    }
+  }
+
+  const getTypeIcon = (tipo: string) => {
+    switch (tipo) {
+      case "estrategia":
+        return <Target className="h-3 w-3" />
+      case "timing":
+        return <Clock className="h-3 w-3" />
+      case "abordagem":
+        return <MessageSquare className="h-3 w-3" />
+      case "objecao":
+        return <Shield className="h-3 w-3" />
+      case "fechamento":
+        return <TrendingUp className="h-3 w-3" />
+      default:
+        return <Lightbulb className="h-3 w-3" />
+    }
+  }
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      // Feedback visual opcional
+    })
+  }
+
   const formatDate = (dateString: string | null | undefined): string => {
     if (!dateString || dateString === "N/A" || dateString === "Nunca") {
       return "Nunca"
     }
 
     try {
-      // Se já está no formato brasileiro "23/08/2025, 22:39:38"
       if (dateString.includes("/") && dateString.includes(",")) {
         const [datePart, timePart] = dateString.split(", ")
         const [day, month, year] = datePart.split("/")
         const [hour, minute] = timePart.split(":")
 
-        // Criar data no formato correto
         const date = new Date(
           Number.parseInt(year),
           Number.parseInt(month) - 1,
@@ -227,7 +412,6 @@ export function FollowupTable({ budgets, onFollowup, user }: FollowupTableProps)
         }
       }
 
-      // Se é uma data ISO ou outro formato
       const date = new Date(dateString)
       if (!isNaN(date.getTime())) {
         return (
@@ -237,7 +421,6 @@ export function FollowupTable({ budgets, onFollowup, user }: FollowupTableProps)
         )
       }
 
-      // Se não conseguiu converter, retorna o valor original
       return dateString
     } catch (error) {
       console.error("Erro ao formatar data:", error, "Data original:", dateString)
@@ -274,7 +457,7 @@ export function FollowupTable({ budgets, onFollowup, user }: FollowupTableProps)
             {pendingBudgets.length} orçamento{pendingBudgets.length > 1 ? "s" : ""} aguardando acompanhamento
             <Badge variant="outline" className="ml-2 bg-green-50 text-green-700 border-green-200">
               <Shield className="h-3 w-3 mr-1" />
-              IA Segura
+              IA Avançada
             </Badge>
           </CardDescription>
         </CardHeader>
@@ -322,7 +505,6 @@ export function FollowupTable({ budgets, onFollowup, user }: FollowupTableProps)
                   </div>
                 </div>
 
-                {/* Informações de follow-up */}
                 <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-gray-500">
                   <div className="flex items-center gap-1">
                     <Clock className="h-3 w-3" />
@@ -347,9 +529,9 @@ export function FollowupTable({ budgets, onFollowup, user }: FollowupTableProps)
         </CardContent>
       </Card>
 
-      {/* Modal de Follow-up */}
+      {/* Modal de Follow-up com Abas */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <MessageSquare className="h-5 w-5" />
@@ -358,67 +540,215 @@ export function FollowupTable({ budgets, onFollowup, user }: FollowupTableProps)
             <DialogDescription className="flex items-center gap-2">
               Orçamento {selectedBudget?.sequencia} - R$ {selectedBudget?.valor.toLocaleString("pt-BR")} -{" "}
               {calculateDaysOpen(selectedBudget?.data || "")} dias em aberto
+              <Badge variant="outline" className="ml-2 bg-blue-50 text-blue-700 border-blue-200">
+                <Brain className="h-3 w-3 mr-1" />
+                IA Estratégica
+              </Badge>
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-6 mt-6">
-            <div className="space-y-4">
-              <div>
-                <label className="text-sm font-medium text-gray-700 block mb-2">Status do Orçamento *</label>
-                <Select
-                  value={formData.status}
-                  onValueChange={(value) => setFormData((prev) => ({ ...prev, status: value }))}
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="followup" className="flex items-center gap-2">
+                <MessageSquare className="h-4 w-4" />
+                Follow-up
+              </TabsTrigger>
+              <TabsTrigger value="ai-suggestions" className="flex items-center gap-2">
+                <Brain className="h-4 w-4" />
+                Sugestões IA
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="followup" className="space-y-4 mt-6">
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium text-gray-700 block mb-2">Status do Orçamento *</label>
+                  <Select
+                    value={formData.status}
+                    onValueChange={(value) => setFormData((prev) => ({ ...prev, status: value }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o novo status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {statusOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium text-gray-700 block mb-2">Observações do Follow-up *</label>
+                  <Textarea
+                    placeholder="Descreva o que aconteceu no follow-up, próximos passos, etc..."
+                    value={formData.observacoes}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, observacoes: e.target.value }))}
+                    rows={4}
+                  />
+                </div>
+
+                {submitError && (
+                  <Alert variant="destructive">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertDescription>{submitError}</AlertDescription>
+                  </Alert>
+                )}
+
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={handleCloseDialog}>
+                    Cancelar
+                  </Button>
+                  <Button onClick={handleSubmitFollowup} disabled={isSubmitting}>
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Salvando...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="h-4 w-4 mr-2" />
+                        Registrar Follow-up
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="ai-suggestions" className="space-y-4 mt-6">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h3 className="text-lg font-medium flex items-center gap-2">
+                    <Brain className="h-5 w-5 text-blue-600" />
+                    Sugestões Estratégicas IA
+                  </h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Análise baseada no histórico de interações e padrões de comportamento
+                  </p>
+                </div>
+                <Button
+                  onClick={loadAISuggestions}
+                  disabled={isLoadingSuggestions}
+                  size="sm"
+                  className="bg-blue-600 hover:bg-blue-700"
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione o novo status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {statusOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-gray-700 block mb-2">Observações do Follow-up *</label>
-                <Textarea
-                  placeholder="Descreva o que aconteceu no follow-up, próximos passos, etc..."
-                  value={formData.observacoes}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, observacoes: e.target.value }))}
-                  rows={4}
-                />
-              </div>
-
-              {submitError && (
-                <Alert variant="destructive">
-                  <AlertTriangle className="h-4 w-4" />
-                  <AlertDescription>{submitError}</AlertDescription>
-                </Alert>
-              )}
-
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={handleCloseDialog}>
-                  Cancelar
-                </Button>
-                <Button onClick={handleSubmitFollowup} disabled={isSubmitting}>
-                  {isSubmitting ? (
+                  {isLoadingSuggestions ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Salvando...
+                      Analisando...
                     </>
                   ) : (
                     <>
-                      <Send className="h-4 w-4 mr-2" />
-                      Registrar Follow-up
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Gerar Sugestões
                     </>
                   )}
                 </Button>
               </div>
-            </div>
-          </div>
+
+              {suggestionsError && (
+                <Alert variant="destructive">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription>{suggestionsError}</AlertDescription>
+                </Alert>
+              )}
+
+              {aiSuggestions.length > 0 ? (
+                <div className="space-y-4">
+                  {aiSuggestions.map((suggestion, index) => (
+                    <div key={index} className="border rounded-lg p-4 bg-white shadow-sm">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          {getPriorityIcon(suggestion.prioridade)}
+                          <Badge variant="outline" className="text-xs">
+                            {getTypeIcon(suggestion.tipo)}
+                            <span className="ml-1 capitalize">{suggestion.tipo}</span>
+                          </Badge>
+                          <Badge variant={suggestion.confianca > 80 ? "default" : "secondary"} className="text-xs">
+                            {suggestion.confianca}% confiança
+                          </Badge>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => copyToClipboard(suggestion.sugestao)}
+                          className="p-1 h-8 w-8"
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+
+                      <h4 className="font-medium text-gray-900 mb-2">{suggestion.categoria}</h4>
+
+                      <p className="text-sm text-gray-700 leading-relaxed">{suggestion.sugestao}</p>
+
+                      <div className="mt-3 flex items-center gap-2">
+                        <Badge
+                          variant={
+                            suggestion.prioridade === "alta"
+                              ? "destructive"
+                              : suggestion.prioridade === "media"
+                                ? "secondary"
+                                : "outline"
+                          }
+                          className="text-xs capitalize"
+                        >
+                          Prioridade {suggestion.prioridade}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+
+                  <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Lightbulb className="h-4 w-4 text-blue-600" />
+                      <span className="text-sm font-medium text-blue-800">Dica Profissional</span>
+                    </div>
+                    <p className="text-xs text-blue-700">
+                      Essas sugestões são baseadas em análise de dados históricos e padrões de mercado. Use-as como
+                      guia, mas sempre considere o contexto específico do cliente.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                !isLoadingSuggestions && (
+                  <div className="text-center py-12">
+                    <Brain className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                    <h4 className="text-lg font-medium text-gray-600 mb-2">Sugestões Estratégicas Personalizadas</h4>
+                    <p className="text-gray-500 mb-6 max-w-md mx-auto">
+                      Clique em "Gerar Sugestões" para receber análises baseadas em IA sobre o histórico de interações
+                      deste orçamento.
+                    </p>
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 max-w-2xl mx-auto text-xs">
+                      <div className="text-center p-3 bg-red-50 rounded-lg border border-red-100">
+                        <Target className="h-6 w-6 text-red-500 mx-auto mb-1" />
+                        <span className="text-red-700">Estratégias</span>
+                      </div>
+                      <div className="text-center p-3 bg-yellow-50 rounded-lg border border-yellow-100">
+                        <Clock className="h-6 w-6 text-yellow-500 mx-auto mb-1" />
+                        <span className="text-yellow-700">Timing</span>
+                      </div>
+                      <div className="text-center p-3 bg-blue-50 rounded-lg border border-blue-100">
+                        <MessageSquare className="h-6 w-6 text-blue-500 mx-auto mb-1" />
+                        <span className="text-blue-700">Abordagem</span>
+                      </div>
+                      <div className="text-center p-3 bg-purple-50 rounded-lg border border-purple-100">
+                        <Shield className="h-6 w-6 text-purple-500 mx-auto mb-1" />
+                        <span className="text-purple-700">Objeções</span>
+                      </div>
+                      <div className="text-center p-3 bg-green-50 rounded-lg border border-green-100">
+                        <TrendingUp className="h-6 w-6 text-green-500 mx-auto mb-1" />
+                        <span className="text-green-700">Fechamento</span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              )}
+            </TabsContent>
+          </Tabs>
         </DialogContent>
       </Dialog>
     </div>
