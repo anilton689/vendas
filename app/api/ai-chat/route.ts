@@ -2,131 +2,138 @@ import { type NextRequest, NextResponse } from "next/server"
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { messages, model, temperature, maxTokens, message, budget, config } = body
+    const { prompt, message, budget, config } = await request.json()
 
-    console.log("🤖 AI Chat API chamada:", {
-      hasMessages: !!messages,
-      hasMessage: !!message,
-      hasBudget: !!budget,
-      hasConfig: !!config,
-      model: model || config?.model || "gpt-4o-mini",
-    })
-
-    // Usar API Key do ambiente do Vercel (server-side)
+    // Verificar se a API Key está configurada no Vercel
     const apiKey = process.env.OPENAI_API_KEY
     if (!apiKey) {
       console.error("❌ OPENAI_API_KEY não configurada no Vercel")
-      return NextResponse.json(
-        {
-          error:
-            "API Key da OpenAI não configurada no servidor. Configure OPENAI_API_KEY nas variáveis de ambiente do Vercel.",
-        },
-        { status: 500 },
-      )
+      return NextResponse.json({ error: "API Key da OpenAI não configurada no servidor" }, { status: 500 })
     }
 
-    console.log("✅ API Key encontrada no ambiente do servidor")
-
-    // Preparar mensagens para a API
-    let finalMessages = []
-
-    if (messages && Array.isArray(messages)) {
-      // Formato novo (array de mensagens)
-      finalMessages = messages
-    } else if (message) {
-      // Formato antigo (mensagem única)
-      let contextMessage = message
-      if (budget) {
-        contextMessage = `
-Orçamento para análise:
-- Cliente: ${budget.cliente}
-- Valor: R$ ${budget.valor?.toLocaleString("pt-BR")}
-- Vendedor: ${budget.nome_vendedor}
-- Data: ${budget.data}
-- Status: ${budget.status_atual || "Em aberto"}
-- Dias em follow-up: ${budget.dias_followup || "N/A"}
-- Último follow-up: ${budget.ultimo_followup || "Nunca"}
-- Observações: ${budget.observacoes_atuais || "Nenhuma"}
-
-Pergunta do usuário: ${message}
-`
-      }
-
-      finalMessages = [
-        {
-          role: "system",
-          content: config?.systemPrompt || "Você é um assistente especializado em vendas e follow-up de orçamentos.",
-        },
-        {
-          role: "user",
-          content: contextMessage,
-        },
-      ]
+    // Usar prompt ou message como fallback
+    const userMessage = prompt || message
+    if (!userMessage || typeof userMessage !== "string" || userMessage.trim().length === 0) {
+      console.error("❌ [AI-API] Mensagem inválida:", { prompt, message, type: typeof userMessage })
+      return NextResponse.json({ error: "Mensagem é obrigatória e deve ser uma string válida" }, { status: 400 })
     }
 
-    const finalModel = model || config?.model || "gpt-4o-mini"
-    const finalTemperature = temperature || config?.temperature || 0.7
-    const finalMaxTokens = maxTokens || config?.maxTokens || 1000
-
-    console.log("📤 Enviando para OpenAI:", {
-      model: finalModel,
-      temperature: finalTemperature,
-      max_tokens: finalMaxTokens,
-      messagesCount: finalMessages.length,
+    console.log("🤖 [AI-API] Processando requisição:", {
+      hasMessage: !!userMessage,
+      messageLength: userMessage?.length || 0,
+      hasBudget: !!budget,
+      hasConfig: !!config,
+      model: config?.model || "não especificado",
+      systemPromptLength: config?.systemPrompt?.length || 0,
+      systemPromptValue: config?.systemPrompt ? "presente" : "ausente",
     })
 
-    // Fazer a chamada para a OpenAI usando a API Key do servidor
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    // Preparar contexto baseado no orçamento (se fornecido)
+    let contextualMessage = userMessage.trim()
+    if (budget) {
+      const budgetContext = `
+DADOS DO ORÇAMENTO PARA ANÁLISE:
+- Sequência: ${budget.sequencia_orcamento || "N/A"}
+- Cliente: ${budget.nome_cliente || "N/A"}
+- Vendedor: ${budget.nome_vendedor || "N/A"}
+- Valor: R$ ${budget.valor_orcamento?.toLocaleString("pt-BR") || "N/A"}
+- Data: ${budget.data_orcamento || "N/A"}
+- Status: ${budget.status || "N/A"}
+- Dias desde criação: ${budget.dias_desde_criacao || "N/A"}
+- Observações: ${budget.observacoes || "Nenhuma"}
+
+PERGUNTA DO USUÁRIO: ${userMessage.trim()}
+`
+      contextualMessage = budgetContext
+    }
+
+    // Usar o systemPrompt da configuração com fallback seguro
+    let systemPrompt =
+      "Você é um assistente especializado em vendas e follow-up de orçamentos. Seja profissional, objetivo e útil."
+
+    if (config?.systemPrompt && typeof config.systemPrompt === "string" && config.systemPrompt.trim().length > 0) {
+      systemPrompt = config.systemPrompt.trim()
+      console.log("✅ [AI-API] Usando systemPrompt personalizado:", systemPrompt.substring(0, 100) + "...")
+    } else {
+      console.log("⚠️ [AI-API] Usando systemPrompt padrão (config inválido):", {
+        hasConfig: !!config,
+        hasSystemPrompt: !!config?.systemPrompt,
+        systemPromptType: typeof config?.systemPrompt,
+        systemPromptLength: config?.systemPrompt?.length || 0,
+      })
+    }
+
+    // Validar que o systemPrompt não é null/undefined
+    if (!systemPrompt || typeof systemPrompt !== "string") {
+      console.error("❌ [AI-API] SystemPrompt inválido:", { systemPrompt, type: typeof systemPrompt })
+      systemPrompt =
+        "Você é um assistente especializado em vendas e follow-up de orçamentos. Seja profissional, objetivo e útil."
+    }
+
+    // Validar que a mensagem contextual não é null/undefined
+    if (!contextualMessage || typeof contextualMessage !== "string") {
+      console.error("❌ [AI-API] Mensagem contextual inválida:", { contextualMessage, type: typeof contextualMessage })
+      contextualMessage = userMessage.trim() || "Como posso ajudar?"
+    }
+
+    console.log("📝 [AI-API] Dados finais para OpenAI:", {
+      systemPromptLength: systemPrompt.length,
+      messageLength: contextualMessage.length,
+      model: config?.model || "gpt-4o-mini",
+      temperature: config?.temperature || 0.7,
+      maxTokens: config?.maxTokens || 1000,
+    })
+
+    // Fazer requisição para OpenAI
+    const openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: finalModel,
-        messages: finalMessages,
-        temperature: finalTemperature,
-        max_tokens: finalMaxTokens,
+        model: config?.model || "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: systemPrompt, // Garantido que é string válida
+          },
+          {
+            role: "user",
+            content: contextualMessage, // Garantido que é string válida
+          },
+        ],
+        temperature: config?.temperature || 0.7,
+        max_tokens: config?.maxTokens || 1000,
       }),
     })
 
-    console.log("📥 Resposta da OpenAI:", response.status, response.statusText)
+    console.log("📡 [AI-API] Status da resposta OpenAI:", openaiResponse.status)
 
-    if (!response.ok) {
-      const errorData = await response.json()
-      console.error("❌ Erro da OpenAI:", errorData)
-
-      let errorMessage = "Erro na API da OpenAI"
-      if (errorData.error?.message) {
-        errorMessage = errorData.error.message
-      } else if (response.status === 401) {
-        errorMessage = "API Key inválida ou sem permissão"
-      } else if (response.status === 429) {
-        errorMessage = "Limite de uso excedido"
-      }
-
-      return NextResponse.json({ error: errorMessage }, { status: response.status })
+    if (!openaiResponse.ok) {
+      const errorData = await openaiResponse.json()
+      console.error("❌ [AI-API] Erro da OpenAI:", errorData)
+      return NextResponse.json(
+        { error: errorData.error?.message || "Erro na API da OpenAI" },
+        { status: openaiResponse.status },
+      )
     }
 
-    const data = await response.json()
-    const aiResponse = data.choices[0]?.message?.content
+    const data = await openaiResponse.json()
+    const aiResponse = data.choices[0]?.message?.content || "Desculpe, não consegui gerar uma resposta."
 
-    if (!aiResponse) {
-      console.error("❌ Resposta vazia da OpenAI")
-      return NextResponse.json({ error: "Resposta vazia da IA" }, { status: 500 })
-    }
+    console.log("✅ [AI-API] Resposta gerada com sucesso:", {
+      responseLength: aiResponse.length,
+      usage: data.usage,
+    })
 
-    console.log("✅ Resposta da IA gerada com sucesso:", aiResponse.substring(0, 100) + "...")
-
-    // Retornar no formato esperado pelos diferentes componentes
     return NextResponse.json({
-      content: aiResponse,
-      response: aiResponse, // Para compatibilidade com código antigo
+      response: aiResponse,
+      model: config?.model || "gpt-4o-mini",
       usage: data.usage,
     })
   } catch (error: any) {
-    console.error("❌ Erro interno na API:", error)
+    console.error("❌ [AI-API] Erro no processamento:", error)
     return NextResponse.json({ error: `Erro interno: ${error.message}` }, { status: 500 })
   }
 }
