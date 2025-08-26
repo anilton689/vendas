@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Slider } from "@/components/ui/slider"
@@ -16,13 +17,15 @@ import {
   Save,
   CheckCircle,
   AlertCircle,
+  Sparkles,
   MessageSquare,
   BarChart3,
-  Shield,
-  Server,
+  Eye,
+  EyeOff,
 } from "lucide-react"
 
 interface AIConfig {
+  apiKey: string
   model: string
   temperature: number
   maxTokens: number
@@ -34,22 +37,19 @@ interface AIConfig {
 
 export function AIConfig() {
   const [config, setConfig] = useState<AIConfig>({
+    apiKey:
+      "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",
     model: "gpt-4o-mini",
     temperature: 0.7,
     maxTokens: 1000,
     systemPrompt: `Você é um assistente especializado em vendas e follow-up de orçamentos. 
 Seu objetivo é ajudar vendedores a fechar mais negócios através de análises inteligentes e sugestões estratégicas.
 Seja sempre prático, direto e focado em resultados.`,
-    followupPrompt: `Analise este orçamento e forneça sugestões específicas para o próximo follow-up em formato de lista clara:
-
-• **Próxima Ação:** [Qual a melhor abordagem para este cliente?]
-• **Timing:** [Quando fazer o próximo contato?]
-• **Argumentos:** [Que argumentos usar?]
-• **Objeções:** [Como superar possíveis objeções?]
-• **Estratégia:** [Estratégia específica para este caso]
-
-Use SEMPRE este formato de lista com bullets (•) e negrito (**) nos títulos.
-Seja direto e prático. Máximo 5 pontos.`,
+    followupPrompt: `Analise este orçamento e forneça sugestões específicas para o próximo follow-up:
+- Qual a melhor abordagem para este cliente?
+- Quando fazer o próximo contato?
+- Que argumentos usar?
+- Como superar possíveis objeções?`,
     analysisPrompt: `Analise este orçamento e forneça:
 1. Probabilidade de fechamento (0-100%)
 2. Principais motivos que podem influenciar a decisão
@@ -58,24 +58,28 @@ Seja direto e prático. Máximo 5 pontos.`,
     isConfigured: true,
   })
 
+  const [showApiKey, setShowApiKey] = useState(false)
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [isSavingPrompts, setIsSavingPrompts] = useState(false)
 
   useEffect(() => {
-    // Carregar configuração salva (sem API Key)
+    // Carregar configuração salva ou usar a configuração padrão
     const savedConfig = localStorage.getItem("ai-config")
     if (savedConfig) {
       try {
         const parsed = JSON.parse(savedConfig)
-        // Remover apiKey se existir (migração)
-        delete parsed.apiKey
-        setConfig((prev) => ({ ...prev, ...parsed, isConfigured: true }))
-        console.log("✅ Configuração da IA carregada:", { model: parsed.model })
+        setConfig((prev) => ({ ...prev, ...parsed }))
+        console.log("✅ Configuração da IA carregada:", { hasApiKey: !!parsed.apiKey })
       } catch (error) {
         console.error("❌ Erro ao carregar configuração da IA:", error)
+        // Usar configuração padrão se houver erro
+        saveConfig()
       }
+    } else {
+      // Salvar configuração padrão se não existir
+      saveConfig()
     }
   }, [])
 
@@ -84,14 +88,12 @@ Seja direto e prático. Máximo 5 pontos.`,
     try {
       const configToSave = {
         ...config,
-        isConfigured: true,
+        isConfigured: !!config.apiKey,
       }
-      // Remover apiKey se existir
-      delete (configToSave as any).apiKey
       localStorage.setItem("ai-config", JSON.stringify(configToSave))
       setConfig(configToSave)
       setTestResult({ success: true, message: "✅ Configuração salva com sucesso!" })
-      console.log("✅ Configuração da IA salva:", { model: configToSave.model })
+      console.log("✅ Configuração da IA salva:", { hasApiKey: !!configToSave.apiKey })
     } catch (error) {
       console.error("❌ Erro ao salvar configuração:", error)
       setTestResult({ success: false, message: "❌ Erro ao salvar configuração" })
@@ -105,7 +107,7 @@ Seja direto e prático. Máximo 5 pontos.`,
     try {
       const configToSave = {
         ...config,
-        isConfigured: true,
+        isConfigured: !!config.apiKey,
       }
       localStorage.setItem("ai-config", JSON.stringify(configToSave))
       setConfig(configToSave)
@@ -126,10 +128,19 @@ Seja direto e prático. Máximo 5 pontos.`,
   }
 
   const testConnection = async () => {
+    if (!config.apiKey) {
+      setTestResult({ success: false, message: "❌ API Key é obrigatória para o teste" })
+      return
+    }
+
     setIsLoading(true)
     setTestResult(null)
 
-    console.log("🧪 Testando conexão com IA usando API Key do servidor...")
+    console.log("🧪 Testando conexão com IA...", {
+      hasApiKey: !!config.apiKey,
+      model: config.model,
+      apiKeyStart: config.apiKey.substring(0, 7) + "...",
+    })
 
     try {
       const response = await fetch("/api/ai-chat", {
@@ -141,6 +152,7 @@ Seja direto e prático. Máximo 5 pontos.`,
           message: "Teste de conexão - responda apenas 'Conexão OK'",
           budget: null,
           config: {
+            apiKey: config.apiKey,
             model: config.model,
             temperature: config.temperature,
             maxTokens: 100,
@@ -161,21 +173,9 @@ Seja direto e prático. Máximo 5 pontos.`,
       } else {
         const errorData = await response.json()
         console.error("❌ Erro na API:", errorData)
-
-        let errorMessage = `❌ Erro na conexão: ${errorData.error || "Falha desconhecida"}`
-
-        // Mensagens específicas para erros comuns
-        if (errorData.error?.includes("API Key da OpenAI não configurada")) {
-          errorMessage = "❌ Configure a variável OPENAI_API_KEY no Vercel"
-        } else if (errorData.error?.includes("insufficient_quota")) {
-          errorMessage = "❌ Cota da API excedida. Verifique seu plano na OpenAI."
-        } else if (errorData.error?.includes("rate_limit")) {
-          errorMessage = "❌ Limite de requisições excedido. Tente novamente em alguns minutos."
-        }
-
         setTestResult({
           success: false,
-          message: errorMessage,
+          message: `❌ Erro na conexão: ${errorData.error || "Falha desconhecida"}`,
         })
       }
     } catch (error: any) {
@@ -198,16 +198,11 @@ Seja direto e prático. Máximo 5 pontos.`,
       systemPrompt: `Você é um assistente especializado em vendas e follow-up de orçamentos. 
 Seu objetivo é ajudar vendedores a fechar mais negócios através de análises inteligentes e sugestões estratégicas.
 Seja sempre prático, direto e focado em resultados.`,
-      followupPrompt: `Analise este orçamento e forneça sugestões específicas para o próximo follow-up em formato de lista clara:
-
-• **Próxima Ação:** [Qual a melhor abordagem para este cliente?]
-• **Timing:** [Quando fazer o próximo contato?]
-• **Argumentos:** [Que argumentos usar?]
-• **Objeções:** [Como superar possíveis objeções?]
-• **Estratégia:** [Estratégia específica para este caso]
-
-Use SEMPRE este formato de lista com bullets (•) e negrito (**) nos títulos.
-Seja direto e prático. Máximo 5 pontos.`,
+      followupPrompt: `Analise este orçamento e forneça sugestões específicas para o próximo follow-up:
+- Qual a melhor abordagem para este cliente?
+- Quando fazer o próximo contato?
+- Que argumentos usar?
+- Como superar possíveis objeções?`,
       analysisPrompt: `Analise este orçamento e forneça:
 1. Probabilidade de fechamento (0-100%)
 2. Principais motivos que podem influenciar a decisão
@@ -218,39 +213,27 @@ Seja direto e prático. Máximo 5 pontos.`,
 
   return (
     <div className="space-y-6">
-      <Card className="bg-gradient-to-r from-green-50 to-blue-50 border-green-200">
+      <Card className="bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Shield className="h-5 w-5 text-green-600" />
-            Configuração da IA - Modo Seguro
+            <Sparkles className="h-5 w-5 text-purple-600" />
+            Configuração da IA - ChatGPT Integrado
           </CardTitle>
-          <CardDescription>A API Key da OpenAI está configurada de forma segura no servidor (Vercel)</CardDescription>
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-              <Server className="h-3 w-3 mr-1" />
-              API Key no Servidor
-            </Badge>
-            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-              <CheckCircle className="h-3 w-3 mr-1" />
-              Configuração Segura
-            </Badge>
-          </div>
+          <CardDescription>
+            IA configurada automaticamente com ChatGPT para análises e sugestões personalizadas de vendas
+          </CardDescription>
+          <Badge variant="outline" className="w-fit bg-green-50 text-green-700 border-green-200">
+            <CheckCircle className="h-3 w-3 mr-1" />
+            IA Configurada e Ativa
+          </Badge>
         </CardHeader>
       </Card>
 
-      <Alert className="bg-green-50 border-green-200">
-        <Shield className="h-4 w-4 text-green-600" />
-        <AlertDescription className="text-green-800">
-          <strong>🔒 Segurança Aprimorada:</strong> A API Key da OpenAI agora está armazenada de forma segura no
-          servidor do Vercel, evitando exposição no frontend e garantindo que a OpenAI não desative sua chave.
-        </AlertDescription>
-      </Alert>
-
       <Tabs defaultValue="basic" className="space-y-4">
         <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="basic">⚙️ Básico</TabsTrigger>
+          <TabsTrigger value="basic">🔑 Básico</TabsTrigger>
           <TabsTrigger value="prompts">💬 Prompts</TabsTrigger>
-          <TabsTrigger value="advanced">🔧 Avançado</TabsTrigger>
+          <TabsTrigger value="advanced">⚙️ Avançado</TabsTrigger>
         </TabsList>
 
         <TabsContent value="basic" className="space-y-4">
@@ -260,9 +243,34 @@ Seja direto e prático. Máximo 5 pontos.`,
                 <Settings className="h-5 w-5" />
                 Configurações Básicas
               </CardTitle>
-              <CardDescription>Configure o modelo e parâmetros da IA</CardDescription>
+              <CardDescription>API Key do ChatGPT configurada automaticamente</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div>
+                <Label htmlFor="apiKey">API Key do ChatGPT *</Label>
+                <div className="relative mt-1">
+                  <Input
+                    id="apiKey"
+                    type={showApiKey ? "text" : "password"}
+                    placeholder="sk-proj-..."
+                    value={config.apiKey}
+                    onChange={(e) => setConfig({ ...config, apiKey: e.target.value })}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-0 top-0 h-full px-3"
+                    onClick={() => setShowApiKey(!showApiKey)}
+                  >
+                    {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+                <p className="text-xs text-green-600 mt-1">
+                  ✅ API Key configurada automaticamente: {config.apiKey.substring(0, 12)}...
+                </p>
+              </div>
+
               <div>
                 <Label htmlFor="model">Modelo da IA</Label>
                 <select
@@ -317,25 +325,14 @@ Seja direto e prático. Máximo 5 pontos.`,
                 </Alert>
               )}
 
-              <div className="bg-blue-50 p-4 rounded-lg">
-                <h4 className="font-medium text-blue-900 mb-2">🔧 Como configurar no Vercel:</h4>
-                <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
-                  <li>Acesse seu projeto no Vercel Dashboard</li>
-                  <li>Vá em Settings → Environment Variables</li>
-                  <li>Adicione uma nova variável:</li>
-                  <li className="ml-4">
-                    • Name: <code className="bg-blue-100 px-1 rounded">OPENAI_API_KEY</code>
-                  </li>
-                  <li className="ml-4">• Value: sua chave da OpenAI (sk-proj-...)</li>
-                  <li>Clique em "Save"</li>
-                  <li>Faça um novo deploy do projeto</li>
-                </ol>
-                <div className="mt-3 p-2 bg-green-100 rounded border-l-4 border-green-400">
-                  <p className="text-sm text-green-800">
-                    <strong>✅ Vantagem:</strong> A API Key fica segura no servidor e não é exposta no frontend,
-                    evitando que a OpenAI desative sua chave por motivos de segurança.
-                  </p>
-                </div>
+              <div className="bg-green-50 p-4 rounded-lg">
+                <h4 className="font-medium text-green-900 mb-2">✅ IA Configurada Automaticamente:</h4>
+                <ul className="text-sm text-green-800 space-y-1">
+                  <li>• API Key do ChatGPT: Configurada</li>
+                  <li>• Modelo: GPT-4o Mini (otimizado)</li>
+                  <li>• Prompts: Especializados em vendas</li>
+                  <li>• Status: Pronta para uso</li>
+                </ul>
               </div>
             </CardContent>
           </Card>
@@ -348,7 +345,7 @@ Seja direto e prático. Máximo 5 pontos.`,
                 <MessageSquare className="h-5 w-5" />
                 Prompts Personalizados
               </CardTitle>
-              <CardDescription>Personalize como a IA analisa e responde sobre orçamentos</CardDescription>
+              <CardDescription>Prompts otimizados para análises de vendas e follow-ups</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
@@ -371,7 +368,7 @@ Seja direto e prático. Máximo 5 pontos.`,
                   placeholder="Instruções para sugestões de follow-up..."
                   value={config.followupPrompt}
                   onChange={(e) => setConfig({ ...config, followupPrompt: e.target.value })}
-                  rows={6}
+                  rows={4}
                   className="mt-1"
                 />
                 <p className="text-xs text-gray-500 mt-1">Usado quando a IA sugere estratégias de follow-up</p>
@@ -453,23 +450,23 @@ Seja direto e prático. Máximo 5 pontos.`,
 
               <div>
                 <Label htmlFor="maxTokens">Tamanho Máximo da Resposta</Label>
-                <input
+                <Input
                   id="maxTokens"
                   type="number"
                   min={100}
                   max={4000}
                   value={config.maxTokens}
                   onChange={(e) => setConfig({ ...config, maxTokens: Number.parseInt(e.target.value) || 1000 })}
-                  className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="mt-1"
                 />
                 <p className="text-xs text-gray-500 mt-1">
                   1000 tokens ≈ 750 palavras. Mais tokens = respostas mais detalhadas (e mais caras)
                 </p>
               </div>
 
-              <div className="bg-yellow-50 p-4 rounded-lg">
-                <h4 className="font-medium text-yellow-900 mb-2">💡 Dicas de Otimização:</h4>
-                <ul className="text-sm text-yellow-800 space-y-1">
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <h4 className="font-medium text-blue-900 mb-2">💡 Configuração Otimizada:</h4>
+                <ul className="text-sm text-blue-800 space-y-1">
                   <li>• Temperature 0.7: Equilibrio ideal para vendas</li>
                   <li>• Max Tokens 1000: Suficiente para análises detalhadas</li>
                   <li>• GPT-4o Mini: Melhor custo-benefício</li>
