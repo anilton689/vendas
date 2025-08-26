@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -10,7 +9,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { Plus, MessageSquare, Loader2 } from "lucide-react"
-
 import type { Budget } from "@/types/budget"
 
 interface FollowupFormProps {
@@ -35,10 +33,8 @@ export function FollowupForm({ budget, isOpen, onClose, onSuccess, user }: Follo
       return
     }
 
-    // Buscar URL do Apps Script com fallback automático
     let writeEndpoint = localStorage.getItem("write-endpoint") || localStorage.getItem("apps-script-url")
 
-    // Se não encontrar, configurar automaticamente
     if (!writeEndpoint) {
       writeEndpoint =
         "https://script.google.com/macros/s/AKfycbxGZKIBspUIbfhZaanLSTkc1VGuowbpu0b8cd6HUphvZpwwQ1d_n7Uq0kiBrxCXFMnIng/exec"
@@ -68,30 +64,25 @@ export function FollowupForm({ budget, isOpen, onClose, onSuccess, user }: Follo
       console.log("📦 Enviando dados para Apps Script:", followupData)
       console.log("🚀 URL de destino:", writeEndpoint)
 
-      // Criar form invisível para submissão
       const form = document.createElement("form")
       form.method = "POST"
       form.action = writeEndpoint
       form.style.display = "none"
 
-      // Criar iframe invisível para receber resposta
       const iframe = document.createElement("iframe")
       iframe.name = `followup-iframe-${Date.now()}`
       iframe.style.display = "none"
       form.target = iframe.name
 
-      // Adicionar dados como campo hidden
       const input = document.createElement("input")
       input.type = "hidden"
       input.name = "json_data"
       input.value = JSON.stringify(followupData)
       form.appendChild(input)
 
-      // Adicionar ao DOM
       document.body.appendChild(iframe)
       document.body.appendChild(form)
 
-      // Submeter form e aguardar resposta
       const submitPromise = new Promise<void>((resolve) => {
         const timeout = setTimeout(() => {
           cleanup()
@@ -117,6 +108,11 @@ export function FollowupForm({ budget, isOpen, onClose, onSuccess, user }: Follo
 
       await submitPromise
 
+      // Limpar campos após sucesso
+      setFollowupStatus("")
+      setFollowupObservacoes("")
+      setSelectedChannel("whatsapp")
+
       onClose()
       onSuccess()
       alert("✅ Follow-up registrado com sucesso!")
@@ -138,7 +134,7 @@ export function FollowupForm({ budget, isOpen, onClose, onSuccess, user }: Follo
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <MessageSquare className="h-5 w-5" />
@@ -148,20 +144,22 @@ export function FollowupForm({ budget, isOpen, onClose, onSuccess, user }: Follo
             <div className="space-y-2 mt-2">
               <div className="flex items-center gap-2 flex-wrap">
                 <Badge variant="outline">{budget?.sequencia}</Badge>
-                <Badge variant="secondary">R$ {budget?.valor.toLocaleString("pt-BR")}</Badge>
+                <Badge variant="secondary">R$ {budget?.valor?.toLocaleString("pt-BR")}</Badge>
                 <Badge variant="outline">{calculateDaysOpen(budget?.data || "")} dias em aberto</Badge>
               </div>
             </div>
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 mt-4">
-          <form onSubmit={submitFollowup} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="status">Novo Status do Orçamento *</Label>
+        <div className="space-y-6 mt-6">
+          <form onSubmit={submitFollowup} className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="status" className="text-sm font-medium">
+                  Novo Status do Orçamento *
+                </Label>
                 <Select value={followupStatus} onValueChange={setFollowupStatus} required>
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full">
                     <SelectValue placeholder="Selecione o status" />
                   </SelectTrigger>
                   <SelectContent>
@@ -174,10 +172,12 @@ export function FollowupForm({ budget, isOpen, onClose, onSuccess, user }: Follo
                 </Select>
               </div>
 
-              <div>
-                <Label htmlFor="channel">Canal de Contato</Label>
+              <div className="space-y-2">
+                <Label htmlFor="channel" className="text-sm font-medium">
+                  Canal de Contato
+                </Label>
                 <Select value={selectedChannel} onValueChange={setSelectedChannel}>
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -191,29 +191,34 @@ export function FollowupForm({ budget, isOpen, onClose, onSuccess, user }: Follo
               </div>
             </div>
 
-            <div>
-              <Label htmlFor="observacoes">Observações do Follow-up *</Label>
+            <div className="space-y-2">
+              <Label htmlFor="observacoes" className="text-sm font-medium">
+                Observações do Follow-up *
+              </Label>
               <Textarea
                 id="observacoes"
                 placeholder="Descreva o que aconteceu no follow-up, próximos passos, feedback do cliente, etc..."
                 value={followupObservacoes}
                 onChange={(e) => setFollowupObservacoes(e.target.value)}
-                rows={4}
-                className="mt-1"
+                rows={5}
+                className="w-full resize-none"
                 required
               />
+              <p className="text-xs text-muted-foreground">
+                Seja específico sobre o contato realizado e próximos passos
+              </p>
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-3 pt-4">
               <Button
                 type="submit"
                 disabled={!followupStatus || !followupObservacoes.trim() || isSubmitting}
-                className="flex-1"
+                className="flex-1 h-11"
               >
                 {isSubmitting ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Registrando...
+                    Registrando Follow-up...
                   </>
                 ) : (
                   <>
@@ -222,7 +227,13 @@ export function FollowupForm({ budget, isOpen, onClose, onSuccess, user }: Follo
                   </>
                 )}
               </Button>
-              <Button type="button" variant="outline" onClick={onClose}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onClose}
+                className="h-11 bg-transparent"
+                disabled={isSubmitting}
+              >
                 Cancelar
               </Button>
             </div>

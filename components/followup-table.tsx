@@ -12,7 +12,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -24,11 +23,9 @@ import {
   Clock,
   AlertTriangle,
   CheckCircle,
-  Brain,
-  Copy,
-  Send,
   Loader2,
   Shield,
+  Send,
 } from "lucide-react"
 import type { Budget } from "@/types/budget"
 
@@ -38,31 +35,12 @@ interface FollowupTableProps {
   user: any | null
 }
 
-interface AIMessage {
-  role: "user" | "assistant"
-  content: string
-  timestamp: Date
-}
-
 export function FollowupTable({ budgets, onFollowup, user }: FollowupTableProps) {
   const [selectedBudget, setSelectedBudget] = useState<any | null>(null)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState("")
-  const [activeTab, setActiveTab] = useState("followup")
-
-  // Estados para IA
-  const [aiSuggestions, setAiSuggestions] = useState<any[]>([])
-  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false)
-  const [chatMessages, setChatMessages] = useState<AIMessage[]>([])
-  const [chatInput, setChatInput] = useState("")
-  const [isChatLoading, setIsChatLoading] = useState(false)
-
-  // Estados do formulário
-  const [formData, setFormData] = useState({
-    status: "",
-    observacoes: "",
-  })
+  const [formData, setFormData] = useState({ status: "", observacoes: "" })
 
   const statusOptions = [
     { value: "orcamento_enviado", label: "Orçamento Enviado", color: "blue" },
@@ -72,40 +50,6 @@ export function FollowupTable({ budgets, onFollowup, user }: FollowupTableProps)
     { value: "pedido_fechado", label: "Pedido Fechado", color: "green" },
     { value: "orcamento_perdido", label: "Orçamento Perdido", color: "red" },
   ]
-
-  const getAIConfig = () => {
-    try {
-      const configStr = localStorage.getItem("ai-config")
-      if (configStr) {
-        const config = JSON.parse(configStr)
-        console.log("🤖 Configuração da IA encontrada:", {
-          model: config.model,
-          temperature: config.temperature,
-          isConfigured: config.isConfigured,
-        })
-        return config
-      }
-    } catch (error) {
-      console.error("❌ Erro ao carregar configuração da IA:", error)
-    }
-    return {
-      model: "gpt-4o-mini",
-      temperature: 0.7,
-      maxTokens: 1000,
-      systemPrompt: "Você é um assistente especializado em vendas e follow-up de orçamentos.",
-      followupPrompt: `Analise este orçamento e forneça sugestões específicas para o próximo follow-up em formato de lista clara:
-
-• **Próxima Ação:** [Qual a melhor abordagem para este cliente?]
-• **Timing:** [Quando fazer o próximo contato?]
-• **Argumentos:** [Que argumentos usar?]
-• **Objeções:** [Como superar possíveis objeções?]
-• **Estratégia:** [Estratégia específica para este caso]
-
-Use SEMPRE este formato de lista com bullets (•) e negrito (**) nos títulos.
-Seja direto e prático. Máximo 5 pontos.`,
-      isConfigured: true,
-    }
-  }
 
   const calculateDaysOpen = (budgetDate: string): number => {
     const today = new Date()
@@ -145,13 +89,7 @@ Seja direto e prático. Máximo 5 pontos.`,
       observacoes: "",
     })
     setIsDialogOpen(true)
-    setActiveTab("followup")
     setSubmitError("")
-
-    // Limpar estados da IA
-    setAiSuggestions([])
-    setChatMessages([])
-    setChatInput("")
   }
 
   const handleCloseDialog = () => {
@@ -159,8 +97,6 @@ Seja direto e prático. Máximo 5 pontos.`,
     setSelectedBudget(null)
     setFormData({ status: "", observacoes: "" })
     setSubmitError("")
-    setAiSuggestions([])
-    setChatMessages([])
   }
 
   const handleSubmitFollowup = async () => {
@@ -263,170 +199,6 @@ Seja direto e prático. Máximo 5 pontos.`,
     } finally {
       setIsSubmitting(false)
     }
-  }
-
-  const loadAISuggestions = async () => {
-    if (!selectedBudget) return
-
-    const config = getAIConfig()
-    console.log("🤖 Carregando sugestões da IA com configuração segura...")
-
-    setIsLoadingSuggestions(true)
-    try {
-      const budgetContext = `
-Cliente: ${selectedBudget.cliente}
-Valor: R$ ${selectedBudget.valor.toLocaleString("pt-BR")}
-Data: ${selectedBudget.data}
-Dias em aberto: ${calculateDaysOpen(selectedBudget.data)}
-Status atual: ${selectedBudget.status_atual}
-Observações anteriores: ${selectedBudget.observacoes_atuais || "Nenhuma"}
-`
-
-      const prompt =
-        config.followupPrompt ||
-        `Analise este orçamento e forneça sugestões específicas para o próximo follow-up em formato de lista clara:
-
-• **Próxima Ação:** [Qual a melhor abordagem para este cliente?]
-• **Timing:** [Quando fazer o próximo contato?]
-• **Argumentos:** [Que argumentos usar?]
-• **Objeções:** [Como superar possíveis objeções?]
-• **Estratégia:** [Estratégia específica para este caso]
-
-Use SEMPRE este formato de lista com bullets (•) e negrito (**) nos títulos.
-Seja direto e prático. Máximo 5 pontos.`
-
-      console.log("📤 Enviando prompt para sugestões da IA (modo seguro)...")
-
-      const response = await fetch("/api/ai-chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: [
-            { role: "system", content: config.systemPrompt || "Você é um assistente de vendas especializado." },
-            { role: "user", content: `${prompt}\n\nDados do orçamento:\n${budgetContext}` },
-          ],
-          model: config.model || "gpt-4o-mini",
-          temperature: config.temperature || 0.7,
-          maxTokens: config.maxTokens || 1000,
-        }),
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        console.log("📥 Resposta da IA para sugestões:", data)
-
-        // Criar sugestões estruturadas
-        const suggestions = [
-          {
-            categoria: "Sugestões IA",
-            sugestao: data.content || data.response || "Sugestões geradas com sucesso!",
-            prioridade: "alta",
-          },
-        ]
-        setAiSuggestions(suggestions)
-      } else {
-        const errorData = await response.json()
-        console.error("❌ Erro na resposta da API:", response.status, errorData)
-        setAiSuggestions([
-          {
-            categoria: "Erro",
-            sugestao: `Erro ao gerar sugestões: ${errorData.error || "Erro desconhecido"}`,
-            prioridade: "baixa",
-          },
-        ])
-      }
-    } catch (error) {
-      console.error("❌ Erro ao carregar sugestões:", error)
-      setAiSuggestions([
-        { categoria: "Erro", sugestao: "Não foi possível carregar sugestões da IA", prioridade: "baixa" },
-      ])
-    } finally {
-      setIsLoadingSuggestions(false)
-    }
-  }
-
-  const sendChatMessage = async () => {
-    if (!chatInput.trim() || !selectedBudget) return
-
-    const config = getAIConfig()
-    console.log("💬 Enviando mensagem para chat da IA (modo seguro)...")
-
-    const userMessage: AIMessage = {
-      role: "user",
-      content: chatInput,
-      timestamp: new Date(),
-    }
-
-    setChatMessages((prev) => [...prev, userMessage])
-    setChatInput("")
-    setIsChatLoading(true)
-
-    try {
-      const budgetContext = `
-Contexto do orçamento:
-Cliente: ${selectedBudget.cliente}
-Valor: R$ ${selectedBudget.valor.toLocaleString("pt-BR")}
-Dias em aberto: ${calculateDaysOpen(selectedBudget.data)}
-Status: ${selectedBudget.status_atual}
-`
-
-      const systemPrompt = config.systemPrompt || "Você é um assistente de vendas especializado."
-
-      console.log("📤 Enviando mensagem para chat da IA...")
-
-      const response = await fetch("/api/ai-chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: [
-            {
-              role: "system",
-              content: `${systemPrompt}\n\n${budgetContext}\n\nResponda de forma prática e específica para este orçamento. Use linguagem profissional mas amigável.`,
-            },
-            ...chatMessages.slice(-5).map((m) => ({ role: m.role, content: m.content })),
-            { role: "user", content: chatInput },
-          ],
-          model: config.model || "gpt-4o-mini",
-          temperature: config.temperature || 0.7,
-          maxTokens: config.maxTokens || 1000,
-        }),
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        console.log("📥 Resposta da IA para chat:", data)
-
-        const aiMessage: AIMessage = {
-          role: "assistant",
-          content: data.content || data.response || "Resposta gerada com sucesso!",
-          timestamp: new Date(),
-        }
-        setChatMessages((prev) => [...prev, aiMessage])
-      } else {
-        const errorData = await response.json()
-        console.error("❌ Erro na resposta da API:", response.status, errorData)
-        const errorMessage: AIMessage = {
-          role: "assistant",
-          content: `Desculpe, ocorreu um erro: ${errorData.error || "Erro desconhecido"}`,
-          timestamp: new Date(),
-        }
-        setChatMessages((prev) => [...prev, errorMessage])
-      }
-    } catch (error) {
-      console.error("❌ Erro no chat:", error)
-      const errorMessage: AIMessage = {
-        role: "assistant",
-        content: "Desculpe, ocorreu um erro. Tente novamente.",
-        timestamp: new Date(),
-      }
-      setChatMessages((prev) => [...prev, errorMessage])
-    } finally {
-      setIsChatLoading(false)
-    }
-  }
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text)
   }
 
   const formatDate = (dateString: string | null | undefined): string => {
@@ -577,7 +349,7 @@ Status: ${selectedBudget.status_atual}
 
       {/* Modal de Follow-up */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <MessageSquare className="h-5 w-5" />
@@ -586,199 +358,67 @@ Status: ${selectedBudget.status_atual}
             <DialogDescription className="flex items-center gap-2">
               Orçamento {selectedBudget?.sequencia} - R$ {selectedBudget?.valor.toLocaleString("pt-BR")} -{" "}
               {calculateDaysOpen(selectedBudget?.data || "")} dias em aberto
-              <Badge variant="outline" className="ml-2 bg-green-50 text-green-700 border-green-200">
-                <Shield className="h-3 w-3 mr-1" />
-                IA Segura
-              </Badge>
             </DialogDescription>
           </DialogHeader>
 
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="followup">📝 Follow-up</TabsTrigger>
-              <TabsTrigger value="ai-suggestions">💡 Sugestões IA</TabsTrigger>
-              <TabsTrigger value="ai-chat">💬 Chat IA</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="followup" className="space-y-4">
-              <div className="space-y-4">
-                <div>
-                  <label className="text-sm font-medium text-gray-700 block mb-2">Status do Orçamento *</label>
-                  <Select
-                    value={formData.status}
-                    onValueChange={(value) => setFormData((prev) => ({ ...prev, status: value }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione o novo status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {statusOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium text-gray-700 block mb-2">Observações do Follow-up *</label>
-                  <Textarea
-                    placeholder="Descreva o que aconteceu no follow-up, próximos passos, etc..."
-                    value={formData.observacoes}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, observacoes: e.target.value }))}
-                    rows={4}
-                  />
-                </div>
-
-                {submitError && (
-                  <Alert variant="destructive">
-                    <AlertTriangle className="h-4 w-4" />
-                    <AlertDescription>{submitError}</AlertDescription>
-                  </Alert>
-                )}
-
-                <div className="flex justify-end gap-2">
-                  <Button variant="outline" onClick={handleCloseDialog}>
-                    Cancelar
-                  </Button>
-                  <Button onClick={handleSubmitFollowup} disabled={isSubmitting}>
-                    {isSubmitting ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Salvando...
-                      </>
-                    ) : (
-                      <>
-                        <Send className="h-4 w-4 mr-2" />
-                        Registrar Follow-up
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="ai-suggestions" className="space-y-4">
-              <div className="flex justify-between items-center">
-                <h3 className="text-lg font-medium flex items-center gap-2">
-                  Sugestões Personalizadas
-                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                    <Shield className="h-3 w-3 mr-1" />
-                    Seguro
-                  </Badge>
-                </h3>
-                <Button onClick={loadAISuggestions} disabled={isLoadingSuggestions} size="sm">
-                  {isLoadingSuggestions ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
-                  {isLoadingSuggestions ? "Analisando..." : "Gerar Sugestões"}
-                </Button>
-              </div>
-
-              {aiSuggestions.length > 0 ? (
-                <div className="space-y-3">
-                  {aiSuggestions.map((suggestion, index) => (
-                    <div key={index} className="p-3 border rounded-lg">
-                      <div className="flex items-center justify-between mb-2">
-                        <Badge variant="outline">{suggestion.categoria}</Badge>
-                        <div className="flex items-center gap-2">
-                          {suggestion.prioridade === "alta" && <span className="text-red-500">🔥</span>}
-                          {suggestion.prioridade === "media" && <span className="text-yellow-500">⚡</span>}
-                          {suggestion.prioridade === "baixa" && <span className="text-blue-500">💡</span>}
-                          <Button size="sm" variant="ghost" onClick={() => copyToClipboard(suggestion.sugestao)}>
-                            <Copy className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      </div>
-                      <div className="text-sm text-gray-700 whitespace-pre-wrap">{suggestion.sugestao}</div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8 text-gray-500">
-                  <Brain className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                  <p>Clique em "Gerar Sugestões" para receber recomendações da IA</p>
-                </div>
-              )}
-            </TabsContent>
-
-            <TabsContent value="ai-chat" className="space-y-4">
-              <div className="flex items-center gap-2 mb-4">
-                <h3 className="text-lg font-medium">Chat Contextual</h3>
-                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                  <Shield className="h-3 w-3 mr-1" />
-                  Seguro
-                </Badge>
-              </div>
-
-              <div className="border rounded-lg p-4 h-96 overflow-y-auto bg-gray-50">
-                {chatMessages.length === 0 ? (
-                  <div className="text-center py-8 text-gray-500">
-                    <MessageSquare className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                    <p className="mb-4">Converse com a IA sobre este orçamento</p>
-                    <div className="space-y-2 text-sm">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setChatInput("Qual a melhor estratégia para este cliente?")}
-                      >
-                        Qual a melhor estratégia?
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setChatInput("Como posso acelerar o fechamento?")}
-                      >
-                        Como acelerar o fechamento?
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setChatInput("Que argumentos usar na negociação?")}
-                      >
-                        Argumentos de negociação?
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {chatMessages.map((message, index) => (
-                      <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-                        <div
-                          className={`max-w-[80%] p-3 rounded-lg ${
-                            message.role === "user" ? "bg-blue-500 text-white" : "bg-white border"
-                          }`}
-                        >
-                          <div className="text-sm whitespace-pre-wrap">{message.content}</div>
-                          <p className="text-xs opacity-70 mt-1">{message.timestamp.toLocaleTimeString("pt-BR")}</p>
-                        </div>
-                      </div>
+          <div className="space-y-6 mt-6">
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-2">Status do Orçamento *</label>
+                <Select
+                  value={formData.status}
+                  onValueChange={(value) => setFormData((prev) => ({ ...prev, status: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o novo status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {statusOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
                     ))}
-                    {isChatLoading && (
-                      <div className="flex justify-start">
-                        <div className="bg-white border p-3 rounded-lg">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
+                  </SelectContent>
+                </Select>
               </div>
 
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Digite sua pergunta sobre este orçamento..."
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  onKeyPress={(e) => e.key === "Enter" && sendChatMessage()}
-                  className="flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-2">Observações do Follow-up *</label>
+                <Textarea
+                  placeholder="Descreva o que aconteceu no follow-up, próximos passos, etc..."
+                  value={formData.observacoes}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, observacoes: e.target.value }))}
+                  rows={4}
                 />
-                <Button onClick={sendChatMessage} disabled={isChatLoading || !chatInput.trim()}>
-                  <Send className="h-4 w-4" />
+              </div>
+
+              {submitError && (
+                <Alert variant="destructive">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription>{submitError}</AlertDescription>
+                </Alert>
+              )}
+
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={handleCloseDialog}>
+                  Cancelar
+                </Button>
+                <Button onClick={handleSubmitFollowup} disabled={isSubmitting}>
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Salvando...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="h-4 w-4 mr-2" />
+                      Registrar Follow-up
+                    </>
+                  )}
                 </Button>
               </div>
-            </TabsContent>
-          </Tabs>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
