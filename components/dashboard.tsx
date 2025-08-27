@@ -75,22 +75,90 @@ export function Dashboard({ budgets, user, onLogout }: DashboardProps) {
   }
 
   const formatDate = (dateString: string) => {
-    if (!dateString) return "Nunca"
+    if (!dateString || dateString === "undefined" || dateString === "null") return "Nunca"
     try {
-      const date = new Date(dateString)
+      // Tenta diferentes formatos de data
+      let date: Date
+
+      // Se já é uma data ISO
+      if (dateString.includes("T") || dateString.includes("-")) {
+        date = new Date(dateString)
+      } else {
+        // Se é um formato brasileiro dd/mm/yyyy
+        const parts = dateString.split("/")
+        if (parts.length === 3) {
+          date = new Date(Number.parseInt(parts[2]), Number.parseInt(parts[1]) - 1, Number.parseInt(parts[0]))
+        } else {
+          date = new Date(dateString)
+        }
+      }
+
+      // Verifica se a data é válida
+      if (isNaN(date.getTime())) {
+        return "Nunca"
+      }
+
       return date.toLocaleDateString("pt-BR")
     } catch {
-      return dateString
+      return "Nunca"
     }
   }
 
   const formatDateTime = (dateTimeString: string) => {
-    if (!dateTimeString) return "Nunca"
+    if (
+      !dateTimeString ||
+      dateTimeString === "undefined" ||
+      dateTimeString === "null" ||
+      dateTimeString === "" ||
+      dateTimeString === "Invalid Date"
+    ) {
+      return "Nunca"
+    }
+
     try {
-      const date = new Date(dateTimeString)
+      let date: Date
+
+      // Se já é uma data ISO com horário
+      if (dateTimeString.includes("T")) {
+        date = new Date(dateTimeString)
+      }
+      // Se é formato brasileiro com horário dd/mm/yyyy hh:mm:ss
+      else if (dateTimeString.includes("/") && dateTimeString.includes(":")) {
+        const [datePart, timePart] = dateTimeString.split(" ")
+        const [day, month, year] = datePart.split("/")
+        const [hour, minute, second] = timePart.split(":")
+        date = new Date(
+          Number.parseInt(year),
+          Number.parseInt(month) - 1,
+          Number.parseInt(day),
+          Number.parseInt(hour),
+          Number.parseInt(minute),
+          Number.parseInt(second || "0"),
+        )
+      }
+      // Se é formato brasileiro apenas data dd/mm/yyyy
+      else if (dateTimeString.includes("/")) {
+        const [day, month, year] = dateTimeString.split("/")
+        date = new Date(Number.parseInt(year), Number.parseInt(month) - 1, Number.parseInt(day))
+      }
+      // Se é formato ISO apenas data yyyy-mm-dd
+      else if (dateTimeString.includes("-")) {
+        date = new Date(dateTimeString)
+      }
+      // Outros formatos
+      else {
+        date = new Date(dateTimeString)
+      }
+
+      // Verifica se a data é válida
+      if (isNaN(date.getTime())) {
+        return "Nunca"
+      }
+
       return date.toLocaleString("pt-BR")
-    } catch {
-      return dateTimeString
+    } catch (error) {
+      console.log("Erro ao formatar data:", dateTimeString, error)
+      return "Nunca"
     }
   }
 
@@ -168,7 +236,7 @@ export function Dashboard({ budgets, user, onLogout }: DashboardProps) {
 
             // Último follow-up do vendedor
             const ultimosFollowups = vendedorBudgets
-              .filter((b) => b.ultimo_followup)
+              .filter((b) => b.ultimo_followup && b.ultimo_followup !== "undefined" && b.ultimo_followup !== "null")
               .sort((a, b) => new Date(b.ultimo_followup || "").getTime() - new Date(a.ultimo_followup || "").getTime())
             const ultimoFollowup = ultimosFollowups[0]?.ultimo_followup
 
@@ -536,16 +604,14 @@ export function Dashboard({ budgets, user, onLogout }: DashboardProps) {
                     <p className="text-sm text-gray-600">Valor Total Fechado</p>
                   </div>
                   <div className="text-center">
-                    <p className="text-sm text-orange-600">
-                      🕒 Último follow-up:{" "}
-                      {formatDateTime(
-                        filteredBudgets
-                          .filter((b) => b.ultimo_followup)
-                          .sort(
-                            (a, b) =>
-                              new Date(b.ultimo_followup || "").getTime() - new Date(a.ultimo_followup || "").getTime(),
-                          )[0]?.ultimo_followup,
-                      )}
+                    <p>
+                      <strong>Email:</strong> {filteredBudgets[0]?.email_cliente || "Não informado"}
+                    </p>
+                    <p>
+                      <strong>Telefone:</strong> {filteredBudgets[0]?.telefone_cliente || "Não informado"}
+                    </p>
+                    <p>
+                      <strong>Data do fechamento:</strong> {formatDateTime(filteredBudgets[0]?.ultimo_followup)}
                     </p>
                   </div>
                 </div>
