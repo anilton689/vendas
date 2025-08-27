@@ -604,19 +604,14 @@ export function Dashboard({ budgets, user, onLogout }: DashboardProps) {
                     <p className="text-sm text-gray-600">Valor Total Fechado</p>
                   </div>
                   <div className="text-center">
-                    <p className="text-sm text-orange-600">
-                      🕒 Último follow-up:{" "}
-                      {formatDateTime(
-                        filteredBudgets
-                          .filter(
-                            (b) =>
-                              b.ultimo_followup && b.ultimo_followup !== "undefined" && b.ultimo_followup !== "null",
-                          )
-                          .sort(
-                            (a, b) =>
-                              new Date(b.ultimo_followup || "").getTime() - new Date(a.ultimo_followup || "").getTime(),
-                          )[0]?.ultimo_followup,
-                      )}
+                    <p>
+                      <strong>Email:</strong> {filteredBudgets[0]?.email_cliente || "Não informado"}
+                    </p>
+                    <p>
+                      <strong>Telefone:</strong> {filteredBudgets[0]?.telefone_cliente || "Não informado"}
+                    </p>
+                    <p>
+                      <strong>Data do fechamento:</strong> {formatDateTime(filteredBudgets[0]?.ultimo_followup)}
                     </p>
                   </div>
                 </div>
